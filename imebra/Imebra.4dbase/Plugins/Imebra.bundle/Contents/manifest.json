@@ -1,0 +1,11 @@
+{
+    "name": "Imebra",
+    "id": 20000,
+    "commands": [
+                 {
+                 "theme": "Imebra",
+                 "syntax": "Imebra_Get_images(&O;&J):J",
+                 "threadSafe": true
+                 }
+                 ]
+}

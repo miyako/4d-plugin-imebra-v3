@@ -1,0 +1,1 @@
+﻿{"name":"GD","id":20000,"commands":[{"theme":"Filter","syntax":"GD Filter(&P;&L;&8;&8;&8;&8):P"},{"theme":"Animation","syntax":"GD Animate(&Y;&L):P"},{"theme":"Rotation","syntax":"GD Rotate(&P;&L):P"}]}

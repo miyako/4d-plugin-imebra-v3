@@ -55,6 +55,10 @@
 		D16FBB4022A4C092008F0416 /* libpng16.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D16FBB3F22A4C091008F0416 /* libpng16.a */; };
 		D16FBB4222A4C09D008F0416 /* libz.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D16FBB4122A4C09D008F0416 /* libz.a */; };
 		D16FBB4822A4C5D3008F0416 /* libiconv.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D16FBB4322A4C0C7008F0416 /* libiconv.a */; };
+		D1D0171322A902A20062C554 /* libjpeg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D1D0170F22A902A20062C554 /* libjpeg.a */; };
+		D1D0171422A902A20062C554 /* libtiff.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D1D0171022A902A20062C554 /* libtiff.a */; };
+		D1D0171522A902A20062C554 /* libgd.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D1D0171122A902A20062C554 /* libgd.a */; };
+		D1D0171622A902A20062C554 /* libwebp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D1D0171222A902A20062C554 /* libwebp.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -123,6 +127,10 @@
 		D16FBB4122A4C09D008F0416 /* libz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libz.a; path = a/libz.a; sourceTree = "<group>"; };
 		D16FBB4322A4C0C7008F0416 /* libiconv.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libiconv.a; path = a/libiconv.a; sourceTree = "<group>"; };
 		D16FBB4622A4C18E008F0416 /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
+		D1D0170F22A902A20062C554 /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = a/libjpeg.a; sourceTree = "<group>"; };
+		D1D0171022A902A20062C554 /* libtiff.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtiff.a; path = a/libtiff.a; sourceTree = "<group>"; };
+		D1D0171122A902A20062C554 /* libgd.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libgd.a; path = a/libgd.a; sourceTree = "<group>"; };
+		D1D0171222A902A20062C554 /* libwebp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libwebp.a; path = a/libwebp.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -130,6 +138,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D1D0171322A902A20062C554 /* libjpeg.a in Frameworks */,
+				D1D0171422A902A20062C554 /* libtiff.a in Frameworks */,
+				D1D0171522A902A20062C554 /* libgd.a in Frameworks */,
+				D1D0171622A902A20062C554 /* libwebp.a in Frameworks */,
 				D16FBB4822A4C5D3008F0416 /* libiconv.a in Frameworks */,
 				D16FBB4222A4C09D008F0416 /* libz.a in Frameworks */,
 				D16FBB4022A4C092008F0416 /* libpng16.a in Frameworks */,
@@ -262,6 +274,10 @@
 		D16FBB3C22A4C07E008F0416 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				D1D0171122A902A20062C554 /* libgd.a */,
+				D1D0170F22A902A20062C554 /* libjpeg.a */,
+				D1D0171022A902A20062C554 /* libtiff.a */,
+				D1D0171222A902A20062C554 /* libwebp.a */,
 				D16FBB4622A4C18E008F0416 /* libiconv.tbd */,
 				D16FBB4322A4C0C7008F0416 /* libiconv.a */,
 				D16FBB4122A4C09D008F0416 /* libz.a */,

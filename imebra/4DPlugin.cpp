@@ -289,15 +289,39 @@ void Imebra_Get_images(PA_PluginParameters params)
     
     image_formats image_format = image_format_bmp;
     
+    int jpeg_quality = (int)ob_get_n(options, L"quality");
+    //Compression quality: 0-95, 0=default
+
+    int png_level = jpeg_quality;
+    //compression level: 0=none, 1-9=level, -1=default
+    
+    int wbmp_fg = (int)ob_get_n(options, L"fg");
+    
+    int webp_quality = jpeg_quality;
+    //-1=default, 0-100
+    
     CUTF8String format;
     if(ob_get_a(options, L"format", &format))
     {
         if(format == (const uint8_t *)".png"){
             image_format = image_format_png;
         }else
-            if(format == (const uint8_t *)".jpg"){
+            if((format == (const uint8_t *)".jpeg")||(format == (const uint8_t *)".jpg")){
                 image_format = image_format_jpg;
-            }
+            }else
+                if(format == (const uint8_t *)".gif"){
+                    image_format = image_format_gif;
+                }else
+                    if(format == (const uint8_t *)".wbmp"){
+                        image_format = image_format_wbmp;
+                    }
+                    else
+                        if(format == (const uint8_t *)".webp"){
+                            image_format = image_format_webp;
+                        }else
+                            if((format == (const uint8_t *)".tiff")||(format == (const uint8_t *)".tif")){
+                                image_format = image_format_tiff;
+                            }
     }
     
     bool export_tags = ob_get_b(options, L"tags");
@@ -390,13 +414,9 @@ void Imebra_Get_images(PA_PluginParameters params)
                     
                     std::unique_ptr<imebra::ReadingDataHandlerNumeric> dataHandler(image->getReadingDataHandler());
                     
-                    //                size_t unitSize = dataHandler->getUnitSize();
-                    //                bool isSigned = dataHandler->isSigned();
-                    
                     /* retrive image */
                     imebra::TransformsChain chain;
-                    int depth = 8;
-                    int dpi = 96;
+
                     size_t requestedBufferSize = 0;
                     bool gotBitmap = false;
                     
@@ -463,119 +483,157 @@ void Imebra_Get_images(PA_PluginParameters params)
                     
                     if(gotBitmap)
                     {
+                        bitmap_file_header bfh;
+                        bitmap_image_header bih;
+                        
+                        int file_size = sizeof_bitmap_file_header + sizeof_bitmap_image_header + requestedBufferSize;
+                        int offset_bits = sizeof_bitmap_file_header + sizeof_bitmap_image_header;
+                        
+                        memcpy(&bfh.bitmap_type, "BM", 2);
+                        
+                        bfh.file_size       = file_size;
+                        bfh.reserved1       = 0;
+                        bfh.reserved2       = 0;
+                        bfh.offset_bits     = offset_bits;
+                        
+                        bih.size_header     = sizeof_bitmap_image_header;
+                        bih.width           = width;
+                        bih.height          = height;
+                        bih.planes          = 1;
+                        bih.bit_count       = 32;
+                        bih.compression     = 0;
+                        bih.image_size      = 0;
+                        bih.ppm_x           = 0;
+                        bih.ppm_y           = 0;
+                        bih.clr_used        = 0;
+                        bih.clr_important   = 0;
+                        
+                        std::vector<char> _buffer;
+                        _buffer.resize(
+                                       sizeof_bitmap_file_header
+                                       +sizeof_bitmap_image_header
+                                       +requestedBufferSize, char(0));
+                        
+                        memcpy(&(_buffer.at(0)), &bfh, sizeof_bitmap_file_header);
+                        memcpy(&(_buffer.at(sizeof_bitmap_file_header)), &bih, sizeof_bitmap_image_header);
+                        memcpy(&(_buffer.at(sizeof_bitmap_file_header+sizeof_bitmap_image_header)), &(buffer.at(0)), requestedBufferSize);
+                        
+                        int len = 0;
+                        void *bytes = NULL;
+                        
                         switch (image_format) {
                             case image_format_png:
                             {
-                                png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-                                if(png_ptr)
+                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
+                                if(gd_in)
                                 {
-                                    png_infop info_ptr = png_create_info_struct(png_ptr);
-                                    if(info_ptr)
+                                    bytes = gdImagePngPtrEx(gd_in, &len, png_level);
+                                    if(bytes)
                                     {
-                                        if(setjmp(png_jmpbuf(png_ptr)))
-                                        {
-                                            png_destroy_write_struct(&png_ptr, &info_ptr);
-                                        }else
-                                        {
-                                            C_BLOB png;
-                                            png_set_write_fn(png_ptr, (png_voidp)&png, write_data_fn, output_flush_fn);
-                                            
-                                            png_set_IHDR (png_ptr,
-                                                          info_ptr,
-                                                          width,
-                                                          height,
-                                                          depth,
-                                                          PNG_COLOR_TYPE_RGB_ALPHA,
-                                                          PNG_INTERLACE_NONE,
-                                                          PNG_COMPRESSION_TYPE_DEFAULT,
-                                                          PNG_FILTER_TYPE_DEFAULT);
-                                            
-                                            png_set_pHYs(png_ptr, info_ptr,
-                                                         dpi * INCHES_PER_METER,
-                                                         dpi * INCHES_PER_METER,
-                                                         PNG_RESOLUTION_METER);
-                                            
-                                            png_byte **row_pointers = (png_byte **)png_malloc(png_ptr, height * sizeof (png_byte *));
-                                            
-                                            char * buffer_p = (char *)&(buffer.at(0));
-                                            for(std::uint32_t scanY(0); scanY < height; ++scanY)
-                                            {
-                                                png_byte *row = (png_byte *)png_malloc(png_ptr, sizeof (uint8_t) *width * 4);
-                                                row_pointers[scanY] = row;
-                                                
-                                                for(std::uint32_t scanX(0); scanX < width; ++scanX)
-                                                {
-                                                    *row++ = *buffer_p++;
-                                                    *row++ = *buffer_p++;
-                                                    *row++ = *buffer_p++;
-                                                    *row++ = *buffer_p++;
-                                                }
-                                            }
-                                            
-                                            png_write_info(png_ptr, info_ptr);
-                                            png_set_rows (png_ptr, info_ptr, row_pointers);
-                                            png_write_png (png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
-                                            png_write_end(png_ptr, info_ptr);
-                                            png_destroy_write_struct(&png_ptr, &info_ptr);
-                                            
-                                            for(std::uint32_t scanY(0); scanY != height; ++scanY)
-                                            {
-                                                png_free(png_ptr, row_pointers[scanY]);
-                                            }
-                                            
-                                            png_free (png_ptr, row_pointers);
-                                            
-                                            PA_Picture picture = PA_CreatePicture((void *)png.getBytesPtr(), png.getBytesLength());
-                                            
-                                            ob_set_p(objImage, L"image", picture);
-                                        }
+                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                                        ob_set_p(objImage, L"image", picture);
+                                        ob_set_a(objImage, L"format", L".png");
+                                        ob_set_i(objImage, L"size", len);
+                                        ob_set_i(objImage, L"level", png_level);
+                                        gdFree(bytes);
                                     }
                                 }
                             }
                                 break;
                             case image_format_jpg:
-                                
+                            {
+                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
+                                if(gd_in)
+                                {
+                                    bytes = gdImageJpegPtr(gd_in, &len, jpeg_quality);
+                                    if(bytes)
+                                    {
+                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                                        ob_set_p(objImage, L"image", picture);
+                                        ob_set_a(objImage, L"format", L".jpeg");
+                                        ob_set_i(objImage, L"size", len);
+                                        ob_set_i(objImage, L"quality", jpeg_quality);
+                                        gdFree(bytes);
+                                    }
+                                }
+                            }
+                                break;
+                            case image_format_gif:
+                            {
+                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
+                                if(gd_in)
+                                {
+                                    bytes = gdImageGifPtr(gd_in, &len);
+                                    if(bytes)
+                                    {
+                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                                        ob_set_p(objImage, L"image", picture);
+                                        ob_set_a(objImage, L"format", L".gif");
+                                        ob_set_i(objImage, L"size", len);
+                                        gdFree(bytes);
+                                    }
+                                }
+                            }
+                                break;
+                            case image_format_tiff:
+                            {
+                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
+                                if(gd_in)
+                                {
+                                    bytes = gdImageTiffPtr(gd_in, &len);
+                                    if(bytes)
+                                    {
+                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                                        ob_set_p(objImage, L"image", picture);
+                                        ob_set_a(objImage, L"format", L".tiff");
+                                        ob_set_i(objImage, L"size", len);
+                                        gdFree(bytes);
+                                    }
+                                }
+                            }
+                                break;
+                            case image_format_wbmp:
+                            {
+                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
+                                if(gd_in)
+                                {
+                                    bytes = gdImageWBMPPtr(gd_in, &len, wbmp_fg);
+                                    if(bytes)
+                                    {
+                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                                        ob_set_p(objImage, L"image", picture);
+                                        ob_set_a(objImage, L"format", L".wbmp");
+                                        ob_set_i(objImage, L"size", len);
+                                        ob_set_i(objImage, L"fg", wbmp_fg);
+                                        gdFree(bytes);
+                                    }
+                                }
+                            }
+                                break;
+                            case image_format_webp:
+                            {
+                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
+                                if(gd_in)
+                                {
+                                    bytes = gdImageWebpPtrEx(gd_in, &len, webp_quality);
+                                    if(bytes)
+                                    {
+                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                                        ob_set_p(objImage, L"image", picture);
+                                        ob_set_a(objImage, L"format", L".webp");
+                                        ob_set_i(objImage, L"size", len);
+                                        ob_set_i(objImage, L"quality", webp_quality);
+                                        gdFree(bytes);
+                                    }
+                                }
+                            }
                                 break;
                             default:
                             {
-                                bitmap_file_header bfh;
-                                bitmap_image_header bih;
-                                
-                                int file_size = sizeof_bitmap_file_header + sizeof_bitmap_image_header + requestedBufferSize;
-                                int offset_bits = sizeof_bitmap_file_header + sizeof_bitmap_image_header;
-                                
-                                memcpy(&bfh.bitmap_type, "BM", 2);
-                                
-                                bfh.file_size       = file_size;
-                                bfh.reserved1       = 0;
-                                bfh.reserved2       = 0;
-                                bfh.offset_bits     = offset_bits;
-                                
-                                bih.size_header     = sizeof_bitmap_image_header;
-                                bih.width           = width;
-                                bih.height          = height;
-                                bih.planes          = 1;
-                                bih.bit_count       = 32;
-                                bih.compression     = 0;
-                                bih.image_size      = 0;
-                                bih.ppm_x           = 0;
-                                bih.ppm_y           = 0;
-                                bih.clr_used        = 0;
-                                bih.clr_important   = 0;
-                                
-                                std::vector<char> _buffer;
-                                _buffer.resize(
-                                               sizeof_bitmap_file_header
-                                               +sizeof_bitmap_image_header
-                                               +requestedBufferSize, char(0));
-                                
-                                memcpy(&(_buffer.at(0)), &bfh, sizeof_bitmap_file_header);
-                                memcpy(&(_buffer.at(sizeof_bitmap_file_header)), &bih, sizeof_bitmap_image_header);
-                                memcpy(&(_buffer.at(sizeof_bitmap_file_header+sizeof_bitmap_image_header)), &(buffer.at(0)), requestedBufferSize);
-                                
                                 PA_Picture picture = PA_CreatePicture((void *)&_buffer.at(0), _buffer.size());
-                                
                                 ob_set_p(objImage, L"image", picture);
+                                ob_set_a(objImage, L"format", L".bmp");
+                                ob_set_i(objImage, L"size", _buffer.size());
                             }
                                 break;
                         }
@@ -602,13 +660,4 @@ void Imebra_Get_images(PA_PluginParameters params)
     ob_set_c(returnValue, L"images", colImages);
     
     PA_ReturnObject( params, returnValue );
-}
-
-void write_data_fn(png_structp png_ptr, png_bytep buf, png_size_t size){
-	C_BLOB *blob = (C_BLOB *)png_get_io_ptr(png_ptr);
-	blob->addBytes((const uint8_t *)buf, (uint32_t)size);
-}
-
-void output_flush_fn(png_structp png_ptr){
-	
 }

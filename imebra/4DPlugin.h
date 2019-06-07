@@ -12,22 +12,23 @@
 #include <imebra/imebra.h>
 #include <list>
 
-#include "libpng16/png.h"
+#include "gd.h"
 
 #define INCHES_PER_METER (100.0/2.54)
 
 // --- Imebra
 void Imebra_Get_images(PA_PluginParameters params);
 
-void write_data_fn(png_structp png_ptr, png_bytep buf, png_size_t size);
-void output_flush_fn(png_structp png_ptr);
-
 typedef enum image_formats
 {
-    image_format_bmp = 0,
-    image_format_png = 1,
-    image_format_jpg = 2
-};
+    image_format_bmp  = 0,
+    image_format_png  = 1,
+    image_format_jpg  = 2,
+    image_format_gif  = 3,
+    image_format_wbmp = 4,
+    image_format_webp = 5,
+    image_format_tiff = 6
+}image_formats_t;
 
 #pragma pack(1)  // ensure structure is packed
 struct bitmap_file_header {

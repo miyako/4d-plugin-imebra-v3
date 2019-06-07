@@ -47,8 +47,8 @@ Property|Type|Description
 images|COLLECTION|
 images\[\].colorspace|TEXT|
 images\[\].format|TEXT|
-images\[\].height|REAL|
-images\[\].width|REAL|
-images\[\].size|REAL|
+images\[\].height|REAL|pixels
+images\[\].width|REAL|pixels
+images\[\].size|REAL|bytes
 images\[\].image|PICTURE|
 

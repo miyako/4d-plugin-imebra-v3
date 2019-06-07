@@ -35,7 +35,7 @@ images|OBJECT|see below
 Property|Type|Description
 ------------|------|----
 format|TEXT|``.png`` ``.jpg`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tif`` ``.tiff`` default:``.bmp``
-quality|LONGINT|``.jpg``: ``0`` (default) to ``95`` quality<br />``.png``: ``-1`` (default), ``0`` (none), ``1`` to ``9`` zip compression<br />``.webp``: ``-1`` (default), ``0`` to ``100`` quality
+quality|LONGINT|``.jpg``: ``0`` (default) to ``95`` quality<br />``.png``: ``-1`` (default) ``0`` (none) ``1`` to ``9`` zip compression<br />``.webp``: ``-1`` (default) ``0`` to ``100`` quality
 fg|LONGINT|foreground index
 tags|BOOLEAN|``true`` to read DICOM tags
 count|LONGINT|max number of images to read, ``-1`` read all images
@@ -46,4 +46,9 @@ Property|Type|Description
 ------------|------|----
 images|COLLECTION|
 images\[\].colorspace|TEXT|
-images\[\].colorspace|TEXT|
+images\[\].format|TEXT|
+images\[\].height|REAL|
+images\[\].width|REAL|
+images\[\].size|REAL|
+images\[\].image|PICTURE|
+

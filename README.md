@@ -39,3 +39,10 @@ quality|LONGINT|``.jpg``: ``0`` (default) to ``95`` quality; ``.png``: ``-1`` (d
 fg|LONGINT|foreground index
 tags|BOOLEAN|``true`` to read DICOM tags
 count|LONGINT|max number of images to read, ``-1`` read all images
+
+#### Images
+
+Property|Type|Description
+------------|------|----
+images|COLLECTION|image object
+images\[\].colorspace|TEXT|

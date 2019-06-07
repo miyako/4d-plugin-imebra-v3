@@ -6,8 +6,7 @@ library version: ``4.5.4.1``
 
 - thread safe
 - native object and collection support
-- faster data load (return direct ``.bmp`` image or create ``.png`` by libpng which is slower)
-- options
+- faster data load (return direct ``.bmp`` image by default)
 
 ### Platform
 
@@ -18,3 +17,25 @@ library version: ``4.5.4.1``
 ### Version
 
 <img src="https://user-images.githubusercontent.com/1725068/41266195-ddf767b2-6e30-11e8-9d6b-2adf6a9f57a5.png" width="32" height="32" />
+
+### Syntax
+
+```
+images:=Imebra Get images (data{;options})
+```
+
+Parameter|Type|Description
+------------|------|----
+data|BLOB|DICOM file data
+options|OBJECT|see below
+images|OBJECT|see below
+
+#### Options
+
+Property|Type|Description
+------------|------|----
+format|TEXT|``.png`` ``.jpg`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tif`` ``.tiff`` default:``.bmp``
+quality|LONGINT|``.jpg``: ``0`` (default) to ``95`` quality; ``.png``: ``-1`` (default), ``0`` (none), ``1`` to ``9`` zip compression; ``.webp``: ``-1`` (default), ``0`` to ``100`` quality
+fg|LONGINT|foreground index
+tags|BOOLEAN|``true`` to read DICOM tags
+count|LONGINT|max number of images to read, ``-1`` read all images

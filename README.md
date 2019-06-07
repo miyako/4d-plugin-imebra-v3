@@ -44,7 +44,7 @@ count|LONGINT|max number of images to read, ``-1`` read all images
 
 Property|Type|Description
 ------------|------|----
-images|COLLECTION|
+images|COLLECTION|``.png`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tiff`` ``.bmp``
 images\[\].colorspace|TEXT|
 images\[\].format|TEXT|
 images\[\].height|REAL|pixels

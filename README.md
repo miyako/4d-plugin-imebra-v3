@@ -52,3 +52,4 @@ images\[\].width|REAL|pixels
 images\[\].size|REAL|bytes
 images\[\].image|PICTURE|
 
+``fg`` and ``quality`` are optional

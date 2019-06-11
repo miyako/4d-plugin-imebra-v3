@@ -35,7 +35,9 @@ images|OBJECT|see below
 Property|Type|Description
 ------------|------|----
 format|TEXT|``.png`` ``.jpg`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tif`` ``.tiff`` default:``.bmp``
-quality|LONGINT|``.bmp``: ``0`` (default) or ``1`` RLE compression<br />``.jpg``: ``0`` (default) to ``95`` quality<br />``.png``: ``-1`` (default) ``0`` (none) ``1`` to ``9`` zip compression<br />``.webp``: ``-1`` (default) ``0`` to ``100`` quality
+quality|LONGINT|``.jpg``: ``0`` (default) to ``95``<br />n<br />``.webp``: ``-1`` (default) ``0`` to ``100``
+level|LONGINT|``.png``: ``-1`` (default) ``0`` (none) ``1`` to ``9``
+compression|LONGINT|``.bmp``: ``0`` (default) or ``1`` RLE compression
 fg|LONGINT|``.wbmp``: foreground index
 tags|BOOLEAN|``true`` to read DICOM tags
 count|LONGINT|max number of images to read, ``-1`` read all images
@@ -52,7 +54,7 @@ images\[\].width|REAL|pixels
 images\[\].size|REAL|bytes
 images\[\].image|PICTURE|
 
-``fg`` and ``quality`` are optional
+``fg``, ``quality``, ``level``, ``compression`` are optional
 
 ```
 images:=Imebra Apply filters (data{;options})
@@ -69,7 +71,9 @@ images|OBJECT|see below
 Property|Type|Description
 ------------|------|----
 format|TEXT|``.png`` ``.jpg`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tif`` ``.tiff`` default:``.bmp``
-quality|LONGINT|``.bmp``: ``0`` (default) or ``1`` RLE compression<br />``.jpg``: ``0`` (default) to ``95`` quality<br />``.png``: ``-1`` (default) ``0`` (none) ``1`` to ``9`` zip compression<br />``.webp``: ``-1`` (default) ``0`` to ``100`` quality
+quality|LONGINT|``.jpg``: ``0`` (default) to ``95``<br />n<br />``.webp``: ``-1`` (default) ``0`` to ``100``
+level|LONGINT|``.png``: ``-1`` (default) ``0`` (none) ``1`` to ``9``
+compression|LONGINT|``.bmp``: ``0`` (default) or ``1`` RLE compression
 fg|LONGINT|``.wbmp``: foreground index
 filters|COLLECTION|see below
 
@@ -141,3 +145,5 @@ images\[0\].image|PICTURE|the image before the last filter
 images\[1\].format|TEXT|
 images\[1\].size|REAL|bytes
 images\[1\].image|PICTURE|the image after the last filter
+
+``fg``, ``quality``, ``level``, ``compression`` are optional

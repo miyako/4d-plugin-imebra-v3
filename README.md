@@ -53,3 +53,20 @@ images\[\].size|REAL|bytes
 images\[\].image|PICTURE|
 
 ``fg`` and ``quality`` are optional
+
+```
+images:=Imebra Apply filters (data{;options})
+```
+
+Parameter|Type|Description
+------------|------|----
+data|BLOB|image data
+options|OBJECT|see below
+images|OBJECT|see below
+
+#### Options
+
+Property|Type|Description
+------------|------|----
+format|TEXT|``.png`` ``.jpg`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tif`` ``.tiff`` default:``.bmp``
+filter|``edgeDetectQuick``<br/>``emboss``<br/>``meanRemoval``<br/>``grayScale``<br/>``negate``<br/>``smooth``<br/>``brightness``<br/>``contrast``<br/>``scatter``<br/>``pixelate``<br/>``gaussianBlur``<br/>``color``<br/>``scatterColor``<br/>``convolution``

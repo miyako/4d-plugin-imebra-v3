@@ -71,4 +71,4 @@ Property|Type|Description
 format|TEXT|``.png`` ``.jpg`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tif`` ``.tiff`` default:``.bmp``
 quality|LONGINT|``.bmp``: ``0`` (default) or ``1`` RLE compression<br />``.jpg``: ``0`` (default) to ``95`` quality<br />``.png``: ``-1`` (default) ``0`` (none) ``1`` to ``9`` zip compression<br />``.webp``: ``-1`` (default) ``0`` to ``100`` quality
 fg|LONGINT|``.wbmp``: foreground index
-filter|TEXT|```edgeDetectQuick``<br/>``emboss``<br/>``meanRemoval``<br/>``grayScale``<br/>``negate``<br/>``smooth``<br/>``brightness``<br/>``contrast``<br/>``scatter``<br/>``pixelate``<br/>``gaussianBlur``<br/>``color``<br/>``scatterColor``<br/>``convolution``
+filter|TEXT|``edgeDetectQuick``<br/>``emboss``<br/>``meanRemoval``<br/>``grayScale``<br/>``negate``<br/>``smooth``<br/>``brightness``<br/>``contrast``<br/>``scatter``<br/>``pixelate``<br/>``gaussianBlur``<br/>``color``<br/>``scatterColor``<br/>``convolution``

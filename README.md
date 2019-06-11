@@ -71,4 +71,30 @@ Property|Type|Description
 format|TEXT|``.png`` ``.jpg`` ``.jpeg`` ``.gif`` ``.wbmp`` ``.webp`` ``.tif`` ``.tiff`` default:``.bmp``
 quality|LONGINT|``.bmp``: ``0`` (default) or ``1`` RLE compression<br />``.jpg``: ``0`` (default) to ``95`` quality<br />``.png``: ``-1`` (default) ``0`` (none) ``1`` to ``9`` zip compression<br />``.webp``: ``-1`` (default) ``0`` to ``100`` quality
 fg|LONGINT|``.wbmp``: foreground index
+filters|COLLECTION|see below
+
+#### Filter
+
+every element should be an object
+
+Property|Type|Description
+------------|------|----
 filter|TEXT|``edgeDetectQuick``<br/>``emboss``<br/>``meanRemoval``<br/>``grayScale``<br/>``negate``<br/>``smooth``<br/>``brightness``<br/>``contrast``<br/>``scatter``<br/>``pixelate``<br/>``gaussianBlur``<br/>``color``<br/>``scatterColor``<br/>``convolution``
+smooth|REAL|for ``smooth``
+brightness|REAL|for ``brightness``
+contrast|REAL|for ``contrast``
+radius|LONGINT|for ``gaussianBlur``
+sigma|REAL|for ``gaussianBlur``
+sub|LONGINT|for ``scatter`` ``scatterColor``
+plus|LONGINT|for ``scatter`` ``scatterColor``
+size|LONGINT|for ``pixelate``
+mode|LONGINT|for ``pixelate``
+div|REAL|for ``convolution``
+offset|REAL|for ``convolution``
+matrix|COLLECTION|size: ``[3][3]`` of REAL for ``convolution``
+colors|COLLECTION|of REAL for ``scatterColor``
+red|LONGINT|for ``color``
+green|LONGINT|for ``color``
+blue|LONGINT|for ``color``
+alpha|LONGINT|for ``color``
+

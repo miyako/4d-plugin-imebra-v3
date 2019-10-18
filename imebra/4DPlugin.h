@@ -18,6 +18,7 @@
 
 // --- Imebra
 void Imebra_Get_images(PA_PluginParameters params);
+void Imebra_Apply_filters(PA_PluginParameters params);
 
 typedef enum image_formats
 {
@@ -28,7 +29,11 @@ typedef enum image_formats
     image_format_wbmp = 4,
     image_format_webp = 5,
     image_format_tiff = 6
-}image_formats_t;
+}image_format_t;
+
+image_format_t get_image_format(PA_ObjectRef options);
+void apply_filter(gdImagePtr *gd, PA_CollectionRef colFilters, PA_long32 i, PA_CollectionRef colAppliedFilters);
+void get_image(gdImagePtr gd, PA_ObjectRef objImage, PA_ObjectRef options);
 
 #pragma pack(1)  // ensure structure is packed
 struct bitmap_file_header {

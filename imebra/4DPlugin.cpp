@@ -14,6 +14,7 @@
 
 
 void PluginMain(PA_long32 selector, PA_PluginParameters params){
+    
 	try
 	{
 		PA_long32 pProcNum = selector;
@@ -27,7 +28,11 @@ void PluginMain(PA_long32 selector, PA_PluginParameters params){
             case 1 :
                 Imebra_Get_images(params);
                 break;
-                
+
+            case 2 :
+                Imebra_Apply_filters(params);
+                break;
+
             default :
                 CommandDispatcher(pProcNum, pResult, pParams);
                 break;
@@ -41,6 +46,7 @@ void PluginMain(PA_long32 selector, PA_PluginParameters params){
 }
 
 void CommandDispatcher (PA_long32 pProcNum, sLONG_PTR *pResult, PackagePtr pParams){
+    
 	switch(pProcNum)
 	{
 // --- Imebra
@@ -50,6 +56,7 @@ void CommandDispatcher (PA_long32 pProcNum, sLONG_PTR *pResult, PackagePtr pPara
 // ------------------------------------ Imebra ------------------------------------
 
 void json_wconv(const wchar_t *value, CUTF16String *u16){
+    
     size_t wlen = wcslen(value);
     
 #if VERSIONWIN
@@ -68,6 +75,7 @@ void json_wconv(const wchar_t *value, CUTF16String *u16){
 }
 
 void ob_set_p(PA_ObjectRef obj, const wchar_t *_key, PA_Picture value){
+    
     if(obj)
     {
         if(value)
@@ -87,6 +95,7 @@ void ob_set_p(PA_ObjectRef obj, const wchar_t *_key, PA_Picture value){
 }
 
 void ob_set_s(PA_ObjectRef obj, const wchar_t *_key, const char *_value){
+    
     if(obj)
     {
         if(_value)
@@ -112,6 +121,7 @@ void ob_set_s(PA_ObjectRef obj, const wchar_t *_key, const char *_value){
 }
 
 void ob_set_a(PA_ObjectRef obj, const wchar_t *_key, const wchar_t *_value){
+    
     if(obj)
     {
         if(_value)
@@ -135,6 +145,7 @@ void ob_set_a(PA_ObjectRef obj, const wchar_t *_key, const wchar_t *_value){
 }
 
 void ob_set_c(PA_ObjectRef obj, const wchar_t *_key, PA_CollectionRef value){
+    
     if(obj)
     {
         if(value)
@@ -154,6 +165,7 @@ void ob_set_c(PA_ObjectRef obj, const wchar_t *_key, PA_CollectionRef value){
 }
 
 void ob_set_i(PA_ObjectRef obj, const wchar_t *_key, PA_long32 value){
+    
     if(obj)
     {
         PA_Variable v = PA_CreateVariable(eVK_Longint);
@@ -170,6 +182,7 @@ void ob_set_i(PA_ObjectRef obj, const wchar_t *_key, PA_long32 value){
 }
 
 void ob_set_b(PA_ObjectRef obj, const wchar_t *_key, bool value){
+    
     if(obj)
     {
         PA_Variable v = PA_CreateVariable(eVK_Boolean);
@@ -186,6 +199,7 @@ void ob_set_b(PA_ObjectRef obj, const wchar_t *_key, bool value){
 }
 
 bool ob_is_defined(PA_ObjectRef obj, const wchar_t *_key){
+    
     bool is_defined = false;
     
     if(obj)
@@ -202,6 +216,7 @@ bool ob_is_defined(PA_ObjectRef obj, const wchar_t *_key){
 }
 
 bool ob_get_a(PA_ObjectRef obj, const wchar_t *_key, CUTF8String *value){
+    
     bool is_defined = false;
     
     if(obj)
@@ -230,6 +245,7 @@ bool ob_get_a(PA_ObjectRef obj, const wchar_t *_key, CUTF8String *value){
 }
 
 bool ob_get_b(PA_ObjectRef obj, const wchar_t *_key){
+    
     bool value = false;
     
     if(obj)
@@ -254,7 +270,8 @@ bool ob_get_b(PA_ObjectRef obj, const wchar_t *_key){
 }
 
 double ob_get_n(PA_ObjectRef obj, const wchar_t *_key){
-    double value = -1;
+    
+    double value = 0.0f;
     
     if(obj)
     {
@@ -277,56 +294,52 @@ double ob_get_n(PA_ObjectRef obj, const wchar_t *_key){
     return value;
 }
 
-void Imebra_Get_images(PA_PluginParameters params)
-{
+PA_CollectionRef ob_get_c(PA_ObjectRef obj, const wchar_t *_key){
+    
+    PA_CollectionRef value = NULL;
+    
+    if(obj)
+    {
+        CUTF16String ukey;
+        json_wconv(_key, &ukey);
+        PA_Unistring key = PA_CreateUnistring((PA_Unichar *)ukey.c_str());
+        
+        if(PA_HasObjectProperty(obj, &key))
+        {
+            PA_Variable v = PA_GetObjectProperty(obj, &key);
+            if(PA_GetVariableKind(v) == eVK_Collection)
+            {
+                value = PA_GetCollectionVariable(v);
+            }
+        }
+        
+        PA_DisposeUnistring(&key);
+    }
+    return value;
+}
+
+#pragma mark -
+
+void Imebra_Get_images(PA_PluginParameters params){
+    
     PA_ObjectRef returnValue = PA_CreateObject();
     
     PA_Handle h = PA_GetBlobHandleParameter( params, 1 );
     PA_ObjectRef options = PA_GetObjectParameter( params, 2 );
     
-    PA_CollectionRef colTags = PA_CreateCollection();
+    PA_CollectionRef colTags = NULL;
     PA_CollectionRef colImages = PA_CreateCollection();
     
-    image_formats image_format = image_format_bmp;
-    
-    int jpeg_quality = (int)ob_get_n(options, L"quality");
-    //Compression quality: 0-95, 0=default
-
-    int png_level = jpeg_quality;
-    //compression level: 0=none, 1-9=level, -1=default
-    
-    int wbmp_fg = (int)ob_get_n(options, L"fg");
-    
-    int webp_quality = jpeg_quality;
-    //-1=default, 0-100
-    
-    CUTF8String format;
-    if(ob_get_a(options, L"format", &format))
-    {
-        if(format == (const uint8_t *)".png"){
-            image_format = image_format_png;
-        }else
-            if((format == (const uint8_t *)".jpeg")||(format == (const uint8_t *)".jpg")){
-                image_format = image_format_jpg;
-            }else
-                if(format == (const uint8_t *)".gif"){
-                    image_format = image_format_gif;
-                }else
-                    if(format == (const uint8_t *)".wbmp"){
-                        image_format = image_format_wbmp;
-                    }
-                    else
-                        if(format == (const uint8_t *)".webp"){
-                            image_format = image_format_webp;
-                        }else
-                            if((format == (const uint8_t *)".tiff")||(format == (const uint8_t *)".tif")){
-                                image_format = image_format_tiff;
-                            }
-    }
+    image_format_t image_format = get_image_format(options);
     
     bool export_tags = ob_get_b(options, L"tags");
     
-    int images_count = (int)ob_get_n(options, L"count");
+    if(export_tags)
+    {
+        colTags = PA_CreateCollection();
+    }
+    
+    int images_count = (int)ob_get_n(options, L"count");/* default:-1 */
     
     if(h)
     {
@@ -518,122 +531,41 @@ void Imebra_Get_images(PA_PluginParameters params)
                         memcpy(&(_buffer.at(sizeof_bitmap_file_header)), &bih, sizeof_bitmap_image_header);
                         memcpy(&(_buffer.at(sizeof_bitmap_file_header+sizeof_bitmap_image_header)), &(buffer.at(0)), requestedBufferSize);
                         
-                        int len = 0;
-                        void *bytes = NULL;
-                        
+
                         switch (image_format) {
                             case image_format_png:
-                            {
-                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
-                                if(gd_in)
-                                {
-                                    bytes = gdImagePngPtrEx(gd_in, &len, png_level);
-                                    if(bytes)
-                                    {
-                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
-                                        ob_set_p(objImage, L"image", picture);
-                                        ob_set_a(objImage, L"format", L".png");
-                                        ob_set_i(objImage, L"size", len);
-                                        ob_set_i(objImage, L"level", png_level);
-                                        gdFree(bytes);
-                                    }
-                                }
-                            }
-                                break;
                             case image_format_jpg:
-                            {
-                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
-                                if(gd_in)
-                                {
-                                    bytes = gdImageJpegPtr(gd_in, &len, jpeg_quality);
-                                    if(bytes)
-                                    {
-                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
-                                        ob_set_p(objImage, L"image", picture);
-                                        ob_set_a(objImage, L"format", L".jpeg");
-                                        ob_set_i(objImage, L"size", len);
-                                        ob_set_i(objImage, L"quality", jpeg_quality);
-                                        gdFree(bytes);
-                                    }
-                                }
-                            }
-                                break;
                             case image_format_gif:
-                            {
-                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
-                                if(gd_in)
-                                {
-                                    bytes = gdImageGifPtr(gd_in, &len);
-                                    if(bytes)
-                                    {
-                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
-                                        ob_set_p(objImage, L"image", picture);
-                                        ob_set_a(objImage, L"format", L".gif");
-                                        ob_set_i(objImage, L"size", len);
-                                        gdFree(bytes);
-                                    }
-                                }
-                            }
-                                break;
                             case image_format_tiff:
-                            {
-                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
-                                if(gd_in)
-                                {
-                                    bytes = gdImageTiffPtr(gd_in, &len);
-                                    if(bytes)
-                                    {
-                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
-                                        ob_set_p(objImage, L"image", picture);
-                                        ob_set_a(objImage, L"format", L".tiff");
-                                        ob_set_i(objImage, L"size", len);
-                                        gdFree(bytes);
-                                    }
-                                }
-                            }
-                                break;
                             case image_format_wbmp:
-                            {
-                                gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
-                                if(gd_in)
-                                {
-                                    bytes = gdImageWBMPPtr(gd_in, &len, wbmp_fg);
-                                    if(bytes)
-                                    {
-                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
-                                        ob_set_p(objImage, L"image", picture);
-                                        ob_set_a(objImage, L"format", L".wbmp");
-                                        ob_set_i(objImage, L"size", len);
-                                        ob_set_i(objImage, L"fg", wbmp_fg);
-                                        gdFree(bytes);
-                                    }
-                                }
-                            }
-                                break;
                             case image_format_webp:
                             {
                                 gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
                                 if(gd_in)
                                 {
-                                    bytes = gdImageWebpPtrEx(gd_in, &len, webp_quality);
-                                    if(bytes)
-                                    {
-                                        PA_Picture picture = PA_CreatePicture((void *)bytes, len);
-                                        ob_set_p(objImage, L"image", picture);
-                                        ob_set_a(objImage, L"format", L".webp");
-                                        ob_set_i(objImage, L"size", len);
-                                        ob_set_i(objImage, L"quality", webp_quality);
-                                        gdFree(bytes);
-                                    }
+                                    get_image(gd_in, objImage, options);
+                                    gdImageDestroy(gd_in);
                                 }
                             }
                                 break;
                             default:
                             {
-                                PA_Picture picture = PA_CreatePicture((void *)&_buffer.at(0), _buffer.size());
-                                ob_set_p(objImage, L"image", picture);
-                                ob_set_a(objImage, L"format", L".bmp");
-                                ob_set_i(objImage, L"size", _buffer.size());
+                                if ((int)ob_get_n(options, L"quality") != 0)
+                                {
+                                    gdImagePtr gd_in = gdImageCreateFromBmpPtr(_buffer.size(), (void *)&_buffer.at(0));
+                                    if(gd_in)
+                                    {
+                                        get_image(gd_in, objImage, options);
+                                        gdImageDestroy(gd_in);
+                                    }
+                                }else
+                                {
+                                    PA_Picture picture = PA_CreatePicture((void *)&_buffer.at(0), _buffer.size());
+                                    ob_set_p(objImage, L"image", picture);
+                                    ob_set_a(objImage, L"format", L".bmp");
+                                    ob_set_i(objImage, L"size", _buffer.size());
+                                    ob_set_i(objImage, L"compression", 0);
+                                }
                             }
                                 break;
                         }
@@ -660,4 +592,573 @@ void Imebra_Get_images(PA_PluginParameters params)
     ob_set_c(returnValue, L"images", colImages);
     
     PA_ReturnObject( params, returnValue );
+}
+
+void Imebra_Apply_filters(PA_PluginParameters params){
+    
+    PA_ObjectRef returnValue = PA_CreateObject();
+    
+    PA_Handle h = PA_GetBlobHandleParameter( params, 1 );
+    PA_ObjectRef options = PA_GetObjectParameter( params, 2 );
+
+    PA_CollectionRef colImages = PA_CreateCollection();
+    PA_CollectionRef colAppliedFilters = PA_CreateCollection();
+    
+    image_format_t image_format = get_image_format(options);
+
+    if(h)
+    {
+        PA_long32 size = PA_GetHandleSize(h);
+        void *p = PA_LockHandle(h);
+        
+        gdImagePtr gd_in = NULL;
+        
+        PA_Variable vObj0 = PA_CreateVariable(eVK_Object);
+        PA_Variable vObj1 = PA_CreateVariable(eVK_Object);
+        PA_ObjectRef objImage0 = PA_CreateObject();
+        PA_ObjectRef objImage1 = PA_CreateObject();
+        
+        switch (image_format) {
+            case image_format_png:
+                gd_in = gdImageCreateFromPngPtr(size, p);
+                break;
+            case image_format_jpg:
+                gd_in = gdImageCreateFromJpegPtr(size, p);
+                break;
+            case image_format_gif:
+                gd_in = gdImageCreateFromGifPtr(size, p);
+                break;
+            case image_format_tiff:
+                gd_in = gdImageCreateFromTiffPtr(size, p);
+                break;
+            case image_format_wbmp:
+                gd_in = gdImageCreateFromWBMPPtr(size, p);
+                break;
+            case image_format_webp:
+                gd_in = gdImageCreateFromWebpPtr(size, p);
+                break;
+            default:
+                gd_in = gdImageCreateFromBmpPtr(size, p);
+                break;
+        }
+        
+        if(gd_in)
+        {
+            PA_CollectionRef colFilters = ob_get_c(options, L"filters");
+            
+            if(colFilters)
+            {
+                PA_long32 len = PA_GetCollectionLength(colFilters);
+                
+                if(len < 2)
+                {
+                    get_image(gd_in, objImage0, options);//return original image in #0
+                    
+                    if(len == 1)
+                    {
+                        apply_filter(&gd_in, colFilters, 0, colAppliedFilters);
+                    }
+                }else
+                {
+                    //more than 2 filters
+                    for(PA_long32 i = 0; i < (len - 1); ++i)
+                    {
+                        apply_filter(&gd_in, colFilters, i, colAppliedFilters);
+                    }
+                    get_image(gd_in, objImage0, options);//return 1 before last filter in #0
+                    
+                    apply_filter(&gd_in, colFilters, len - 1, colAppliedFilters);
+                }
+
+                get_image(gd_in, objImage1, options);
+                
+                PA_SetObjectVariable(&vObj0, objImage0);
+                PA_SetCollectionElement(colImages, 0, vObj0);
+                PA_ClearVariable(&vObj0);
+                
+                PA_SetObjectVariable(&vObj1, objImage1);
+                PA_SetCollectionElement(colImages, 1, vObj1);
+                PA_ClearVariable(&vObj1);
+                
+            }
+            gdImageDestroy(gd_in);
+        }
+        
+        PA_UnlockHandle(h);
+    }
+
+    ob_set_c(returnValue, L"images", colImages);
+    ob_set_c(returnValue, L"filters", colAppliedFilters);
+    
+    PA_ReturnObject( params, returnValue );
+}
+
+#pragma mark -
+
+image_format_t get_image_format(PA_ObjectRef options){
+    
+    image_format_t image_format = image_format_bmp;
+    
+    CUTF8String format;
+    if(ob_get_a(options, L"format", &format))
+    {
+        if(format == (const uint8_t *)".png"){
+            image_format = image_format_png;
+            goto get_image_format_exit;
+        }
+        if((format == (const uint8_t *)".jpeg")||(format == (const uint8_t *)".jpg")){
+            image_format = image_format_jpg;
+            goto get_image_format_exit;
+        }
+        
+        if(format == (const uint8_t *)".gif"){
+            image_format = image_format_gif;
+            goto get_image_format_exit;
+        }
+        if(format == (const uint8_t *)".wbmp"){
+            image_format = image_format_wbmp;
+            goto get_image_format_exit;
+        }
+        
+        if(format == (const uint8_t *)".webp"){
+            image_format = image_format_webp;
+            goto get_image_format_exit;
+        }
+        if((format == (const uint8_t *)".tiff")||(format == (const uint8_t *)".tif")){
+            image_format = image_format_tiff;
+            goto get_image_format_exit;
+        }
+    }
+    
+    get_image_format_exit :
+    
+    return image_format;
+}
+
+void apply_filter(gdImagePtr *gd, PA_CollectionRef colFilters, PA_long32 i, PA_CollectionRef colAppliedFilters){
+    
+    PA_Variable v = PA_GetCollectionElement(colFilters, i);
+    if(PA_GetVariableKind(v)== eVK_Object)
+    {
+        PA_ObjectRef objFilter = PA_GetObjectVariable(v);
+
+        CUTF8String filter;
+        if(ob_get_a(objFilter, L"filter", &filter))
+        {
+            if(filter == (const uint8_t *)"selectiveBlur"){
+                
+                if(gdImageSelectiveBlur(*gd))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"edgeDetectQuick"){
+                
+                if(gdImageEdgeDetectQuick(*gd))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"emboss"){
+                
+                if(gdImageEmboss(*gd))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"meanRemoval"){
+                
+                if(gdImageMeanRemoval(*gd))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"grayScale"){
+                
+                if(gdImageGrayScale(*gd))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"negate"){
+                
+                if(gdImageNegate(*gd))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"smooth"){
+                
+                double weight = ob_get_n(objFilter, L"weight");
+                if(gdImageSmooth(*gd, weight))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"brightness"){
+                
+                double brightness = ob_get_n(objFilter, L"brightness");
+                if(gdImageBrightness(*gd, brightness))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"contrast"){
+                
+                double contrast = ob_get_n(objFilter, L"contrast");
+                if(gdImageContrast(*gd, contrast))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"rotate"){
+                
+                int angle = ob_get_n(objFilter, L"angle");
+                int dstW = ob_get_n(objFilter, L"dstW");/* dstW */
+                int dstH = ob_get_n(objFilter, L"dstH");/* dstH */
+                int dstX = ob_get_n(objFilter, L"dstX");/* dstX */
+                int dstY = ob_get_n(objFilter, L"dstY");/* dstY */
+
+                int srcW = ob_get_n(objFilter, L"srcW");/* srcW */
+                int srcH = ob_get_n(objFilter, L"srcH");/* srcH */
+                int srcX = ob_get_n(objFilter, L"srcX");/* srcX */
+                int srcY = ob_get_n(objFilter, L"srcY");/* srcY */
+                
+                gdImagePtr _gd = gdImageCreateTrueColor(dstW, dstH);
+                
+                if(_gd)
+                {
+                    /* make background transparent */
+                    gdImageAlphaBlending(_gd, 0);
+                    gdImageFill(_gd, 0, 0, gdImageColorAllocateAlpha(_gd, 0, 0, 0, 255));
+                    gdImageSaveAlpha(_gd, 1);
+                    
+                    gdImageCopyRotated(_gd, *gd,
+                                       dstX,
+                                       dstY,
+                                       srcX,
+                                       srcY,
+                                       srcW, 
+                                       srcH,
+                                       angle);
+                    
+                    gdImageDestroy(*gd);
+                    
+                    *gd = _gd;
+                    
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"scatter"){
+                
+                int sub = ob_get_n(objFilter, L"sub");
+                int plus = ob_get_n(objFilter, L"plus");
+                if(gdImageScatter(*gd, sub, plus))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"pixelate"){
+                
+                int block_size = ob_get_n(objFilter, L"size");
+                int mode = ob_get_n(objFilter, L"mode");
+                if(gdImagePixelate(*gd, block_size, mode))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"gaussianBlur"){
+                
+                int radius = ob_get_n(objFilter, L"radius");
+                double sigma = ob_get_n(objFilter, L"sigma");
+                
+                gdImagePtr _gd = gdImageCopyGaussianBlurred(*gd, radius, sigma);
+
+                if(_gd)
+                {
+                    gdImageDestroy(*gd);
+                    
+                    *gd = _gd;
+                    
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"color"){
+                
+                int red = ob_get_n(objFilter, L"red");
+                int green = ob_get_n(objFilter, L"green");
+                int blue = ob_get_n(objFilter, L"blue");
+                int alpha = ob_get_n(objFilter, L"alpha");
+                
+                if(gdImageColor(*gd, red, green, blue, alpha))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"scatterColor"){
+                
+                int sub = ob_get_n(objFilter, L"sub");
+                int plus = ob_get_n(objFilter, L"plus");
+                std::vector<int>colors;
+                
+                PA_CollectionRef _colors = ob_get_c(objFilter, L"colors");
+
+                if(_colors)
+                {
+                    for(PA_long32 c = 0; c < PA_GetCollectionLength(_colors); ++c)
+                    {
+                        PA_Variable e = PA_GetCollectionElement(_colors, c);
+                        if(PA_GetVariableKind(e) == eVK_Real)
+                        {
+                            colors.push_back((int)PA_GetRealVariable(e));
+                        }
+                    }
+                }
+
+                if(gdImageScatterColor(*gd, sub, plus, &colors[0], colors.size()))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+            if(filter == (const uint8_t *)"convolution"){
+                
+                double div = ob_get_n(objFilter, L"div");
+                double offset = ob_get_n(objFilter, L"offset");
+
+                float filter[3][3] = {
+                    { 0.0, 0.0, 0.0},
+                    { 0.0, 0.0, 0.0},
+                    { 0.0, 0.0, 0.0}
+                };
+                
+                PA_CollectionRef _filter = ob_get_c(objFilter, L"matrix");
+                
+                if(_filter)
+                {
+                    if(PA_GetCollectionLength(_filter) == 3)
+                    {
+                        for(PA_long32 y = 0; y < 3; ++y)
+                        {
+                            PA_Variable r = PA_GetCollectionElement(_filter, y);
+                            if(PA_GetVariableKind(r) == eVK_Collection)
+                            {
+                                PA_CollectionRef c = PA_GetCollectionVariable(r);
+                                if(PA_GetCollectionLength(c) == 3)
+                                {
+                                    for(PA_long32 x = 0; x < 3; ++x)
+                                    {
+                                        PA_Variable e = PA_GetCollectionElement(c, x);
+                                        if(PA_GetVariableKind(e) == eVK_Real)
+                                        {
+                                            filter[y][x] = PA_GetRealVariable(e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if(gdImageConvolution(*gd, filter, div, offset))
+                {
+                    PA_Variable vObj = PA_CreateVariable(eVK_Object);
+                    PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));
+                    PA_SetCollectionElement(colAppliedFilters, PA_GetCollectionLength(colAppliedFilters), vObj);
+                    PA_ClearVariable(&vObj);
+                }
+                goto apply_filter_exit;
+            }
+        }
+    }
+    
+    apply_filter_exit:
+    
+    PA_ClearVariable(&v);
+}
+
+void get_image(gdImagePtr gd, PA_ObjectRef objImage, PA_ObjectRef options){
+    
+    int jpeg_quality    =  0;
+    int png_level       = -1;
+    int wbmp_fg         = -1;
+    int webp_quality    = -1;
+    int bmp_compression =  0;
+    
+    if(ob_is_defined(options, L"quality"))
+    {
+        jpeg_quality = (int)ob_get_n(options, L"quality");
+        //Compression quality: 0-95, 0=default
+        
+        webp_quality = jpeg_quality;
+        //-1=default, 0-100        
+    }
+
+    if(ob_is_defined(options, L"compression"))
+    {
+        bmp_compression = (int)ob_get_n(options, L"compression") != 0;
+        //whether to apply RLE or not
+    }
+    
+    if(ob_is_defined(options, L"level"))
+    {
+        png_level = (int)ob_get_n(options, L"level");
+        //compression level: 0=none, 1-9=level, -1=default
+    }
+    
+    if(ob_is_defined(options, L"fg"))
+    {
+        wbmp_fg = (int)ob_get_n(options, L"fg");
+    }
+    
+    image_format_t image_format = get_image_format(options);
+    
+    if(gd)
+    {
+        int len = 0;
+        void *bytes = NULL;
+        switch (image_format) {
+            case image_format_png:
+                bytes = gdImagePngPtrEx(gd, &len, png_level);
+                if(bytes)
+                {
+                    PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                    ob_set_p(objImage, L"image", picture);
+                    ob_set_a(objImage, L"format", L".png");
+                    ob_set_i(objImage, L"size", len);
+                    ob_set_i(objImage, L"level", png_level);
+                    gdFree(bytes);
+                }
+                break;
+            case image_format_jpg:
+                bytes = gdImageJpegPtr(gd, &len, jpeg_quality);
+                if(bytes)
+                {
+                    PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                    ob_set_p(objImage, L"image", picture);
+                    ob_set_a(objImage, L"format", L".jpeg");
+                    ob_set_i(objImage, L"size", len);
+                    ob_set_i(objImage, L"quality", jpeg_quality);
+                    gdFree(bytes);
+                }
+                break;
+            case image_format_gif:
+                bytes = gdImageGifPtr(gd, &len);
+                if(bytes)
+                {
+                    PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                    ob_set_p(objImage, L"image", picture);
+                    ob_set_a(objImage, L"format", L".gif");
+                    ob_set_i(objImage, L"size", len);
+                    gdFree(bytes);
+                }
+                break;
+            case image_format_tiff:
+                bytes = gdImageTiffPtr(gd, &len);
+                if(bytes)
+                {
+                    PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                    ob_set_p(objImage, L"image", picture);
+                    ob_set_a(objImage, L"format", L".tiff");
+                    ob_set_i(objImage, L"size", len);
+                    gdFree(bytes);
+                }
+                break;
+            case image_format_wbmp:
+                bytes = gdImageWBMPPtr(gd, &len, wbmp_fg);
+                if(bytes)
+                {
+                    PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                    ob_set_p(objImage, L"image", picture);
+                    ob_set_a(objImage, L"format", L".wbmp");
+                    ob_set_i(objImage, L"size", len);
+                    ob_set_i(objImage, L"fg", wbmp_fg);
+                    gdFree(bytes);
+                }
+                break;
+            case image_format_webp:
+                bytes = gdImageWebpPtrEx(gd, &len, webp_quality);
+                if(bytes)
+                {
+                    PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                    ob_set_p(objImage, L"image", picture);
+                    ob_set_a(objImage, L"format", L".webp");
+                    ob_set_i(objImage, L"size", len);
+                    ob_set_i(objImage, L"quality", webp_quality);
+                    gdFree(bytes);
+                }
+                break;
+            default:
+                bytes = gdImageBmpPtr(gd, &len, bmp_compression);
+                if(bytes)
+                {
+                    PA_Picture picture = PA_CreatePicture((void *)bytes, len);
+                    ob_set_p(objImage, L"image", picture);
+                    ob_set_a(objImage, L"format", L".bmp");
+                    ob_set_i(objImage, L"size", len);
+                    ob_set_i(objImage, L"compression", bmp_compression);
+                    gdFree(bytes);
+                }
+                break;
+        }
+    }
 }

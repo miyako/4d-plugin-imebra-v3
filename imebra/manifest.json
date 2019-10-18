@@ -4,8 +4,13 @@
     "commands": [
                  {
                  "theme": "Imebra",
-                 "syntax": "Imebra_Get_images(&O;&J):J",
+                 "syntax": "Imebra Get images(&O;&J):J",
                  "threadSafe": true
+                 },
+                 {
+                     "theme": "Imebra",
+                     "syntax": "Imebra Apply filters(&O;&J):J",
+                     "threadSafe": true
                  }
                  ]
 }

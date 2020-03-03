@@ -2,15 +2,15 @@
     "name": "Imebra",
     "id": 20000,
     "commands": [
-                 {
-                 "theme": "Imebra",
-                 "syntax": "Imebra Get images(&O;&J):J",
-                 "threadSafe": true
-                 },
-                 {
-                     "theme": "Imebra",
-                     "syntax": "Imebra Apply filters(&O;&J):J",
-                     "threadSafe": true
-                 }
-                 ]
+        {
+            "theme": "Imebra",
+            "syntax": "Imebra Get images(&O;&J):J",
+            "threadSafe": true
+        },
+        {
+            "theme": "Imebra",
+            "syntax": "Imebra Apply filters(&O;&J):J",
+            "threadSafe": true
+        }
+    ]
 }

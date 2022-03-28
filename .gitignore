@@ -1,2 +1,4 @@
 *.a
 *.lib
+*.DS_Store
+imebra/build/*

@@ -54,6 +54,10 @@ extern "C" {
 	{
 		
 	private:
+		/* owns raw resources: copying would double-release them */
+		C_BLOB(const C_BLOB&);
+		C_BLOB& operator=(const C_BLOB&);
+
 		
 		CBytes* _CBytes;
 		

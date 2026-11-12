@@ -21,6 +21,10 @@ class ARRAY_BOOLEAN
 {
 
 private:
+	/* owns raw resources: copying would double-release them */
+	ARRAY_BOOLEAN(const ARRAY_BOOLEAN&);
+	ARRAY_BOOLEAN& operator=(const ARRAY_BOOLEAN&);
+
 
 	CboolArray* _CboolArray;
 	

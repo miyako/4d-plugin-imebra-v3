@@ -24,6 +24,10 @@ extern "C" {
 	{
 		
 	private:
+		/* owns raw resources: copying would double-release them */
+		CPicture(const CPicture&);
+		CPicture& operator=(const CPicture&);
+
 		
 		std::map<CUTF8String, uint32_t> _Types;
 		
@@ -76,6 +80,10 @@ extern "C" {
 	{
 		
 	private:
+		/* owns raw resources: copying would double-release them */
+		C_PICTURE(const C_PICTURE&);
+		C_PICTURE& operator=(const C_PICTURE&);
+
 		
 		CPicture* _CPicture;
 

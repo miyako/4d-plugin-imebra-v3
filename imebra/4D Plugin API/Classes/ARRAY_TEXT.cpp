@@ -42,6 +42,8 @@ void ARRAY_TEXT::toParamAtIndex(PackagePtr pParams, uint32_t index)
 		PA_Variable arr = *((PA_Variable*) pParams[index - 1]);
 		PA_Variable *param = ((PA_Variable *)pParams[index - 1]);
 		
+		bool fresh = false;
+
 		switch (arr.fType) 
 		{
 			case eVK_ArrayUnicode:
@@ -49,6 +51,7 @@ void ARRAY_TEXT::toParamAtIndex(PackagePtr pParams, uint32_t index)
 			case eVK_Undefined:
 				PA_ClearVariable(&arr);				
 				arr = PA_CreateVariable(eVK_ArrayUnicode);
+				fresh = true;
 				param->fType = arr.fType;
 				break;				
 			
@@ -59,14 +62,34 @@ void ARRAY_TEXT::toParamAtIndex(PackagePtr pParams, uint32_t index)
 		if(arr.fType == eVK_ArrayUnicode)
 		{
 			
-			PA_ResizeArray(&arr, this->_CUTF16StringArray->empty() ? 0 : (uint32_t)(this->_CUTF16StringArray->size() - 1));
+			PA_long32 oldCount = arr.uValue.fArray.fNbElements;
+			PA_long32 newCount = (PA_long32)(this->_CUTF16StringArray->empty() ? 0 : (uint32_t)(this->_CUTF16StringArray->size() - 1));
+			bool grows = (newCount > oldCount) && (arr.uValue.fArray.fData != NULL);
+			PA_ResizeArray(&arr, newCount);
+			if(grows && (PA_GetLastError() != eER_NoErr))
+			{
+				/* the SDK records the new count even when the handle could not grow */
+				if(fresh)
+				{
+					arr.uValue.fArray.fNbElements = oldCount;
+					PA_ClearVariable(&arr);
+					param->fType = eVK_Undefined;
+				}
+				return;
+			}
 			
 			uint32_t i;
 			
 			for(i = 0; i < this->_CUTF16StringArray->size(); i++)
 			{
 				PA_Unistring str = PA_CreateUnistring((PA_Unichar *)this->_CUTF16StringArray->at(i).c_str());
-				PA_SetStringInArray(arr, i, &str);					
+				if((arr.fType == eVK_ArrayUnicode) && arr.uValue.fArray.fData && ((PA_long32)i <= arr.uValue.fArray.fNbElements))
+				{
+					PA_SetStringInArray(arr, i, &str);
+				}else
+				{
+					PA_DisposeUnistring(&str);/* rejected: the caller retains ownership */
+				}					
 			}
 			
 			param->fFiller = 0;

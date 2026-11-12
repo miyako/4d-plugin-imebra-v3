@@ -1,0 +1,29 @@
+name: ownership
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  ownership:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fixed tree
+        run: python3 tests/ownership/run.py .
+      - name: Pre-fix baseline (expected failures)
+        run: |
+          set -euo pipefail
+          baseline="$RUNNER_TEMP/baseline"
+          mkdir "$baseline"
+          git archive a5feaa5d888a3b51bdd047b6996fda59d99a9029 | tar -x -C "$baseline"
+          python3 tests/ownership/run.py --expect-fail tests/ownership/baseline-expected-failures.txt "$baseline"

@@ -21,6 +21,10 @@ class ARRAY_INTEGER
 {
 
 private:
+	/* owns raw resources: copying would double-release them */
+	ARRAY_INTEGER(const ARRAY_INTEGER&);
+	ARRAY_INTEGER& operator=(const ARRAY_INTEGER&);
+
 
 	CShortArray* _CShortArray;
 	

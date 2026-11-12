@@ -49,6 +49,8 @@ void ARRAY_DATE::toParamAtIndex(PackagePtr pParams, uint32_t index)
 		PA_Variable arr = *((PA_Variable*) pParams[index - 1]);
 		PA_Variable *param = ((PA_Variable *)pParams[index - 1]);
 		
+		bool fresh = false;
+
 		switch (arr.fType) 
 		{
 			case eVK_ArrayDate:
@@ -56,6 +58,7 @@ void ARRAY_DATE::toParamAtIndex(PackagePtr pParams, uint32_t index)
 			case eVK_Undefined:
 				PA_ClearVariable(&arr);
 				arr = PA_CreateVariable(eVK_ArrayDate);
+				fresh = true;
 				param->fType = arr.fType;
 				break;				
 				
@@ -66,7 +69,21 @@ void ARRAY_DATE::toParamAtIndex(PackagePtr pParams, uint32_t index)
 		if(arr.fType == eVK_ArrayDate)
 		{
 			
-			PA_ResizeArray(&arr, this->_CDateArray->empty() ? 0 : (uint32_t)(this->_CDateArray->size() - 1));
+			PA_long32 oldCount = arr.uValue.fArray.fNbElements;
+			PA_long32 newCount = (PA_long32)(this->_CDateArray->empty() ? 0 : (uint32_t)(this->_CDateArray->size() - 1));
+			bool grows = (newCount > oldCount) && (arr.uValue.fArray.fData != NULL);
+			PA_ResizeArray(&arr, newCount);
+			if(grows && (PA_GetLastError() != eER_NoErr))
+			{
+				/* the SDK records the new count even when the handle could not grow */
+				if(fresh)
+				{
+					arr.uValue.fArray.fNbElements = oldCount;
+					PA_ClearVariable(&arr);
+					param->fType = eVK_Undefined;
+				}
+				return;
+			}
 			
 			uint32_t i;
             uint16_t day, month, year;

@@ -21,6 +21,10 @@ class ARRAY_LONGINT
 {
 
 private:
+	/* owns raw resources: copying would double-release them */
+	ARRAY_LONGINT(const ARRAY_LONGINT&);
+	ARRAY_LONGINT& operator=(const ARRAY_LONGINT&);
+
 
 	CIntArray* _CIntArray;
 	

@@ -123,7 +123,7 @@ void CPicture::fromFileAtPath(CUTF8String *pFilePath)
 	PA_Unistring _path = PA_CreateUnistring((PA_Unichar *)filePath.getUTF16StringPtr());
 	
 	PA_Variable args[2];
-	args[0] = PA_CreateVariable(eVK_Unistring);
+	args[0] = PA_CreateVariable(eVK_Undefined);
 	PA_SetStringVariable(&args[0], &_path);
 	args[1] = PA_CreateVariable(eVK_Picture);
 	
@@ -131,9 +131,7 @@ void CPicture::fromFileAtPath(CUTF8String *pFilePath)
 	
 	PA_Picture p = PA_GetPictureVariable(args[1]);
 	
-	PA_DisposeUnistring(&_path);
-	
-	PA_ClearVariable(&args[0]);
+	PA_ClearVariable(&args[0]);/* also disposes _path */
 	
 	setPicture(p);
 	
@@ -146,7 +144,12 @@ void CPicture::setBytes(const uint8_t *bytes, uint32_t len)
 {
 	PA_Picture p = PA_CreatePicture((void *)bytes, len);
 	
-	setPicture(p);	
+	setPicture(p);/* retains */
+	
+	if(p)
+	{
+		PA_DisposePicture(p);
+	}
 }
 
 const uint8_t *CPicture::getBytesPtr(CUTF8String *pType)
@@ -246,7 +249,7 @@ PA_Picture CPicture::createCopy(const char* type)
                                               size,
                                               eVTC_UTF_16
                                               );    
-    CUTF16String u16 = CUTF16String((const PA_Unichar *)&buf[0], len);	
+    CUTF16String u16 = CUTF16String((const PA_Unichar *)&buf[0], len / sizeof(PA_Unichar));/* len is in bytes */	
     
     PA_Unistring u = PA_CreateUnistring((PA_Unichar*)u16.c_str());
     
@@ -255,9 +258,9 @@ PA_Picture CPicture::createCopy(const char* type)
     p = PA_DuplicatePicture(this->_CPicture, 1);
     
     PA_Variable args[2];
-    args[0] = PA_CreateVariable(eVK_Picture);
+    args[0] = PA_CreateVariable(eVK_Undefined);
     PA_SetPictureVariable(&args[0], p);
-    args[1] = PA_CreateVariable(eVK_Unistring);
+    args[1] = PA_CreateVariable(eVK_Undefined);
     
     PA_SetStringVariable(&args[1], &u);
     PA_ExecuteCommandByID(CMU_CONVERT_PICTURE, args, 2);
@@ -280,7 +283,7 @@ PA_Picture CPicture::createGrayScale()
 	
 	PA_Variable args[2];
 	
-	args[0] = PA_CreateVariable(eVK_Picture);
+	args[0] = PA_CreateVariable(eVK_Undefined);
 	args[1] = PA_CreateVariable(eVK_Longint);
 	
 	PA_SetPictureVariable(&args[0], p);	
@@ -346,7 +349,7 @@ void CPicture::getSize(unsigned int *width, unsigned int *height)
 {
 	PA_Variable args[3];
 	
-	args[0] = PA_CreateVariable(eVK_Picture);
+	args[0] = PA_CreateVariable(eVK_Undefined);
 	args[1] = PA_CreateVariable(eVK_Longint);		
 	args[2] = PA_CreateVariable(eVK_Longint);	
 	
@@ -369,7 +372,7 @@ PA_Picture CPicture::createThumbnail(unsigned int width, unsigned int height)
 	PA_Picture p;
 	PA_Variable args[4];
 	
-	args[0] = PA_CreateVariable(eVK_Picture);
+	args[0] = PA_CreateVariable(eVK_Undefined);
 	args[1] = PA_CreateVariable(eVK_Picture);	
 	args[2] = PA_CreateVariable(eVK_Longint);		
 	args[3] = PA_CreateVariable(eVK_Longint);	

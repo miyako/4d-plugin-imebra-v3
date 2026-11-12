@@ -24,6 +24,10 @@ class ARRAY_DATE
 {
 
 private:
+	/* owns raw resources: copying would double-release them */
+	ARRAY_DATE(const ARRAY_DATE&);
+	ARRAY_DATE& operator=(const ARRAY_DATE&);
+
 
 	CDateArray* _CDateArray;
 	

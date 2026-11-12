@@ -80,7 +80,7 @@ void ob_set_p(PA_ObjectRef obj, const wchar_t *_key, PA_Picture value){
     {
         if(value)
         {
-            PA_Variable v = PA_CreateVariable(eVK_Picture);
+            PA_Variable v = PA_CreateVariable(eVK_Undefined);
             CUTF16String ukey;
             json_wconv(_key, &ukey);
             PA_Unistring key = PA_CreateUnistring((PA_Unichar *)ukey.c_str());
@@ -100,7 +100,7 @@ void ob_set_s(PA_ObjectRef obj, const wchar_t *_key, const char *_value){
     {
         if(_value)
         {
-            PA_Variable v = PA_CreateVariable(eVK_Unistring);
+            PA_Variable v = PA_CreateVariable(eVK_Undefined);
             CUTF16String ukey;
             
             json_wconv(_key, &ukey);
@@ -126,7 +126,7 @@ void ob_set_a(PA_ObjectRef obj, const wchar_t *_key, const wchar_t *_value){
     {
         if(_value)
         {
-            PA_Variable v = PA_CreateVariable(eVK_Unistring);
+            PA_Variable v = PA_CreateVariable(eVK_Undefined);
             CUTF16String ukey;
             CUTF16String uvalue;
             json_wconv(_key, &ukey);
@@ -229,12 +229,16 @@ bool ob_get_a(PA_ObjectRef obj, const wchar_t *_key, CUTF8String *value){
         if(is_defined)
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Unistring)
+            if(PA_GetLastError() == eER_NoErr)
             {
-                PA_Unistring uvalue = PA_GetStringVariable(v);
-                C_TEXT t;
-                t.setUTF16String(&uvalue);
-                t.copyUTF8String(value);
+                if(PA_GetVariableKind(v) == eVK_Unistring)
+                {
+                    PA_Unistring uvalue = PA_GetStringVariable(v);
+                    C_TEXT t;
+                    t.setUTF16String(&uvalue);
+                    t.copyUTF8String(value);
+                }
+                PA_ClearVariable(&v);
             }
         }
 
@@ -257,9 +261,13 @@ bool ob_get_b(PA_ObjectRef obj, const wchar_t *_key){
         if(PA_HasObjectProperty(obj, &key))
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Boolean)
+            if(PA_GetLastError() == eER_NoErr)
             {
-                value = PA_GetBooleanVariable(v);
+                if(PA_GetVariableKind(v) == eVK_Boolean)
+                {
+                    value = PA_GetBooleanVariable(v);
+                }
+                PA_ClearVariable(&v);
             }
         }
         
@@ -282,9 +290,13 @@ double ob_get_n(PA_ObjectRef obj, const wchar_t *_key){
         if(PA_HasObjectProperty(obj, &key))
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Real)
+            if(PA_GetLastError() == eER_NoErr)
             {
-                value = PA_GetRealVariable(v);
+                if(PA_GetVariableKind(v) == eVK_Real)
+                {
+                    value = PA_GetRealVariable(v);
+                }
+                PA_ClearVariable(&v);
             }
         }
         
@@ -307,9 +319,16 @@ PA_CollectionRef ob_get_c(PA_ObjectRef obj, const wchar_t *_key){
         if(PA_HasObjectProperty(obj, &key))
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Collection)
+            if(PA_GetLastError() == eER_NoErr)
             {
-                value = PA_GetCollectionVariable(v);
+                if(PA_GetVariableKind(v) == eVK_Collection)
+                {
+                    /* the caller releases the returned reference */
+                    value = PA_GetCollectionVariable(v);
+                }else
+                {
+                    PA_ClearVariable(&v);
+                }
             }
         }
         
@@ -349,7 +368,19 @@ void Imebra_Get_images(PA_PluginParameters params){
         imebra::MemoryStreamInput input(mem);
         imebra::StreamReader reader(input);
         
-        std::unique_ptr<imebra::DataSet> data(imebra::CodecFactory::load(reader));
+        std::unique_ptr<imebra::DataSet> data;
+        try
+        {
+            data.reset(imebra::CodecFactory::load(reader));
+        }
+        catch(...)
+        {
+            PA_UnlockHandle(h);
+            if(colTags) PA_DisposeCollection(colTags);
+            PA_DisposeCollection(colImages);
+            PA_DisposeObject(returnValue);
+            throw;
+        }
 
         /* get tags */
         if(export_tags)
@@ -680,8 +711,17 @@ void Imebra_Apply_filters(PA_PluginParameters params){
                 PA_SetCollectionElement(colImages, 1, vObj1);
                 PA_ClearVariable(&vObj1);
                 
+                PA_DisposeCollection(colFilters);
+            }else
+            {
+                PA_DisposeObject(objImage0);
+                PA_DisposeObject(objImage1);
             }
             gdImageDestroy(gd_in);
+        }else
+        {
+            PA_DisposeObject(objImage0);
+            PA_DisposeObject(objImage1);
         }
         
         PA_UnlockHandle(h);
@@ -738,6 +778,10 @@ image_format_t get_image_format(PA_ObjectRef options){
 void apply_filter(gdImagePtr *gd, PA_CollectionRef colFilters, PA_long32 i, PA_CollectionRef colAppliedFilters){
     
     PA_Variable v = PA_GetCollectionElement(colFilters, i);
+    if(PA_GetLastError() != eER_NoErr)
+    {
+        return;/* failed output is unspecified: neither inspect nor clear it */
+    }
     if(PA_GetVariableKind(v)== eVK_Object)
     {
         PA_ObjectRef objFilter = PA_GetObjectVariable(v);
@@ -964,11 +1008,14 @@ void apply_filter(gdImagePtr *gd, PA_CollectionRef colFilters, PA_long32 i, PA_C
                     for(PA_long32 c = 0; c < PA_GetCollectionLength(_colors); ++c)
                     {
                         PA_Variable e = PA_GetCollectionElement(_colors, c);
+                        if(PA_GetLastError() != eER_NoErr) continue;
                         if(PA_GetVariableKind(e) == eVK_Real)
                         {
                             colors.push_back((int)PA_GetRealVariable(e));
                         }
+                        PA_ClearVariable(&e);
                     }
+                    PA_DisposeCollection(_colors);
                 }
 
                 if(gdImageScatterColor(*gd, sub, plus, &colors[0], colors.size()))
@@ -1000,6 +1047,7 @@ void apply_filter(gdImagePtr *gd, PA_CollectionRef colFilters, PA_long32 i, PA_C
                         for(PA_long32 y = 0; y < 3; ++y)
                         {
                             PA_Variable r = PA_GetCollectionElement(_filter, y);
+                            if(PA_GetLastError() != eER_NoErr) continue;
                             if(PA_GetVariableKind(r) == eVK_Collection)
                             {
                                 PA_CollectionRef c = PA_GetCollectionVariable(r);
@@ -1008,15 +1056,19 @@ void apply_filter(gdImagePtr *gd, PA_CollectionRef colFilters, PA_long32 i, PA_C
                                     for(PA_long32 x = 0; x < 3; ++x)
                                     {
                                         PA_Variable e = PA_GetCollectionElement(c, x);
+                                        if(PA_GetLastError() != eER_NoErr) continue;
                                         if(PA_GetVariableKind(e) == eVK_Real)
                                         {
                                             filter[y][x] = PA_GetRealVariable(e);
                                         }
+                                        PA_ClearVariable(&e);
                                     }
                                 }
                             }
+                            PA_ClearVariable(&r);
                         }
                     }
+                    PA_DisposeCollection(_filter);
                 }
                 
                 if(gdImageConvolution(*gd, filter, div, offset))

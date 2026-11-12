@@ -21,6 +21,10 @@ class ARRAY_REAL
 {
 
 private:
+	/* owns raw resources: copying would double-release them */
+	ARRAY_REAL(const ARRAY_REAL&);
+	ARRAY_REAL& operator=(const ARRAY_REAL&);
+
 
 	CDoubleArray* _CDoubleArray;
 	

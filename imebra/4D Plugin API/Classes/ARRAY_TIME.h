@@ -21,6 +21,10 @@ class ARRAY_TIME
 {
 
 private:
+	/* owns raw resources: copying would double-release them */
+	ARRAY_TIME(const ARRAY_TIME&);
+	ARRAY_TIME& operator=(const ARRAY_TIME&);
+
 
 	CIntArray* _CIntArray;
 	

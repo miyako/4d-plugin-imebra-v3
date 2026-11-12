@@ -28,6 +28,10 @@ extern "C" {
 	{
 		
 	private:
+		/* owns raw resources: copying would double-release them */
+		C_TEXT(const C_TEXT&);
+		C_TEXT& operator=(const C_TEXT&);
+
 		
 		CUTF16String* _CUTF16String;
 		

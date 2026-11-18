@@ -69,6 +69,15 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "cmake install failed: $name" }
           }
 
+          # build a single target, then install only what it produced
+          function CMake-BuildTargetInstall([string]$name, [string]$target) {
+            Write-Host "=== build $name (target: $target)"
+            cmake --build "build/$name" --config Release --target $target
+            if ($LASTEXITCODE -ne 0) { throw "cmake build failed: $name ($target)" }
+            cmake --install "build/$name"
+            if ($LASTEXITCODE -ne 0) { throw "cmake install failed: $name" }
+          }
+
           # create alias copies of a just-installed static lib under the names the
           # upstream Find*.cmake modules (used by libgd and libtiff) look for
           function Alias-Lib([string]$pattern, [string[]]$names) {
@@ -140,7 +149,10 @@ jobs:
                                          '-Dwebp=OFF', '-Djbig=OFF', '-Dpixarlog=ON',
                                          '-DCMAKE_C_FLAGS=/DLZMA_API_STATIC',
                                          "-DCMAKE_PREFIX_PATH=$prefix")
-          CMake-BuildInstall tiff
+          # build only the tiff library target: the plugin links tiff.lib only,
+          # and the tools/tests/contrib tree fails to link regardless (e.g.
+          # contrib/iptcutil uses strncasecmp, which does not exist on MSVC)
+          CMake-BuildTargetInstall tiff tiff
 
           # ---- libgd 2.2.3 (must match include/windows/gd.h) ----
           Clone gd https://github.com/libgd/libgd gd-2.2.3

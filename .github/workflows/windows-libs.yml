@@ -116,7 +116,7 @@ jobs:
 
           # ---- libwebp 1.2.4 ----
           Clone webp https://github.com/webmproject/libwebp v1.2.4
-          CMake-Configure webp webp/libwebp @('-DBUILD_SHARED_LIBS=OFF',
+          CMake-Configure webp webp @('-DBUILD_SHARED_LIBS=OFF',
                                          '-DWEBP_BUILD_ANIM_UTILS=OFF',
                                          '-DWEBP_BUILD_CWEBP=OFF', '-DWEBP_BUILD_DWEBP=OFF',
                                          '-DWEBP_BUILD_GIF2WEBP=OFF', '-DWEBP_BUILD_IMG2WEBP=OFF',

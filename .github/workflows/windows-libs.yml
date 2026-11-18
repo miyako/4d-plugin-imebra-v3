@@ -127,7 +127,7 @@ jobs:
 
           # ---- libtiff 4.1.0 (zlib + jpeg + lzma, matching the macOS archive) ----
           Clone tiff https://github.com/libsdl-org/libtiff v4.1.0
-          CMake-Configure tiff libtiff @('-DBUILD_SHARED_LIBS=OFF', '-Dcxx=OFF',
+          CMake-Configure tiff tiff @('-DBUILD_SHARED_LIBS=OFF', '-Dcxx=OFF',
                                          '-Dzlib=ON', '-Djpeg=ON', '-Dlzma=ON', '-Dzstd=OFF',
                                          '-Dwebp=OFF', '-Djbig=OFF', '-Dpixarlog=ON',
                                          "-DCMAKE_PREFIX_PATH=$prefix")
@@ -135,7 +135,7 @@ jobs:
 
           # ---- libgd 2.2.3 (must match include/windows/gd.h) ----
           Clone gd https://github.com/libgd/libgd gd-2.2.3
-          CMake-Configure gd libgd @('-DBUILD_SHARED_LIBS=OFF',
+          CMake-Configure gd gd @('-DBUILD_SHARED_LIBS=OFF',
                                      '-DENABLE_PNG=ON', '-DENABLE_JPEG=ON', '-DENABLE_TIFF=ON',
                                      '-DENABLE_WEBP=ON', '-DENABLE_ICONV=OFF', '-DENABLE_XPM=OFF',
                                      "-DCMAKE_PREFIX_PATH=$prefix")

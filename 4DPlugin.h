@@ -42,7 +42,7 @@ struct bitmap_file_header {
     short           reserved1;          // 2 bytes
     short           reserved2;          // 2 bytes
     unsigned int    offset_bits;        // 4 bytes
-} bfh;
+};
 // bitmap image header (40 bytes)
 struct bitmap_image_header {
     unsigned int    size_header;        // 4 bytes
@@ -56,7 +56,7 @@ struct bitmap_image_header {
     unsigned int    ppm_y;              // 4 bytes
     unsigned int    clr_used;           // 4 bytes
     unsigned int    clr_important;      // 4 bytes
-} bih;
+};
 #pragma pack(0)  // restore normal structure packing rules
 
 #define sizeof_bitmap_file_header 14

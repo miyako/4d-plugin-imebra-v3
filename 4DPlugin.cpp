@@ -339,15 +339,42 @@ PA_CollectionRef ob_get_c(PA_ObjectRef obj, const wchar_t *_key){
 
 #pragma mark -
 
-void Imebra_Get_images(PA_PluginParameters params){
+// Releases SDK handles and objects if an exception unwinds the command body.
+// Fields are cleared as each resource is consumed so the destructor only
+// releases what is still owned on the throwing path.
+struct CommandGuard {
+    PA_Handle h = NULL;
+    bool locked = false;
+    PA_CollectionRef colImages = NULL;
+    PA_CollectionRef colAppliedFilters = NULL;
+    PA_CollectionRef colTags = NULL;
+    PA_CollectionRef colFilters = NULL;
+    PA_ObjectRef ret = NULL;
+
+    ~CommandGuard(){
+        if(locked && h) PA_UnlockHandle(h);
+        if(colTags) PA_DisposeCollection(colTags);
+        if(colFilters) PA_DisposeCollection(colFilters);
+        if(colImages) PA_DisposeCollection(colImages);
+        if(colAppliedFilters) PA_DisposeCollection(colAppliedFilters);
+        if(ret) PA_DisposeObject(ret);
+    }
+};
+
+static void Imebra_Get_images_impl(PA_PluginParameters params){
+    
+    CommandGuard guard;
     
     PA_ObjectRef returnValue = PA_CreateObject();
+    guard.ret = returnValue;
     
     PA_Handle h = PA_GetBlobHandleParameter( params, 1 );
+    guard.h = h;
     PA_ObjectRef options = PA_GetObjectParameter( params, 2 );
     
     PA_CollectionRef colTags = NULL;
     PA_CollectionRef colImages = PA_CreateCollection();
+    guard.colImages = colImages;
     
     image_format_t image_format = get_image_format(options);
     
@@ -356,6 +383,7 @@ void Imebra_Get_images(PA_PluginParameters params){
     if(export_tags)
     {
         colTags = PA_CreateCollection();
+        guard.colTags = colTags;
     }
     
     int images_count = (int)ob_get_n(options, L"count");/* default:-1 */
@@ -364,23 +392,19 @@ void Imebra_Get_images(PA_PluginParameters params){
     {
         PA_long32 size = PA_GetHandleSize(h);
         
-        imebra::ReadMemory mem((const char *)PA_LockHandle(h), size);
+        void *p = PA_LockHandle(h);
+        if(p == NULL)
+        {
+            throw std::runtime_error("PA_LockHandle failed");
+        }
+        guard.locked = true;
+        
+        imebra::ReadMemory mem((const char *)p, size);
         imebra::MemoryStreamInput input(mem);
         imebra::StreamReader reader(input);
         
         std::unique_ptr<imebra::DataSet> data;
-        try
-        {
-            data.reset(imebra::CodecFactory::load(reader));
-        }
-        catch(...)
-        {
-            PA_UnlockHandle(h);
-            if(colTags) PA_DisposeCollection(colTags);
-            PA_DisposeCollection(colImages);
-            PA_DisposeObject(returnValue);
-            throw;
-        }
+        data.reset(imebra::CodecFactory::load(reader));
 
         /* get tags */
         if(export_tags)
@@ -464,8 +488,6 @@ void Imebra_Get_images(PA_PluginParameters params){
                     size_t requestedBufferSize = 0;
                     bool gotBitmap = false;
                     
-                    imebra::DrawBitmap draw(chain);
-                    
                     if(imebra::ColorTransformsFactory::isMonochrome(image->getColorSpace()))
                     {
                         imebra::VOILUT voilutTransform;
@@ -495,7 +517,6 @@ void Imebra_Get_images(PA_PluginParameters params){
                             voilutTransform.applyOptimalVOI(*image, 0, 0, width, height);
                         }
                         chain.addTransform(voilutTransform);
-                        imebra::DrawBitmap draw(chain);
                         gotBitmap = true;
                         
                     }else
@@ -504,11 +525,16 @@ void Imebra_Get_images(PA_PluginParameters params){
                         {
                             imebra::Transform *colorSpaceTransform = imebra::ColorTransformsFactory::getTransform(colorSpace, "RGB");
                             chain.addTransform(*colorSpaceTransform);
-                            
-                            gotBitmap = true;
-                            
                         }
+                        /* RGB needs no transform but still gets rendered;
+                           DrawBitmap applies the needed color conversion itself */
+                        gotBitmap = true;
+                        
                     }
+                    
+                    /* the DrawBitmap must be built after the chain is complete:
+                       it may clone the transforms at construction time */
+                    imebra::DrawBitmap draw(chain);
                     
                     std::vector<char> buffer;
                     
@@ -613,27 +639,55 @@ void Imebra_Get_images(PA_PluginParameters params){
         }while(image);
         
         PA_UnlockHandle(h);
+        guard.locked = false;
     }
 
     if(export_tags)
     {
        ob_set_c(returnValue, L"tags", colTags);
+       guard.colTags = NULL;/* the collection reference was consumed */
     }
 
     ob_set_c(returnValue, L"images", colImages);
+    guard.colImages = NULL;/* the collection reference was consumed */
     
+    guard.ret = NULL;/* PA_ReturnObject takes over the object */
     PA_ReturnObject( params, returnValue );
 }
 
-void Imebra_Apply_filters(PA_PluginParameters params){
+void Imebra_Get_images(PA_PluginParameters params){
+    
+    /* an exception must never escape without a return value: 4D would hang */
+    try
+    {
+        Imebra_Get_images_impl(params);
+    }
+    catch(...)
+    {
+        PA_ObjectRef o = PA_CreateObject();
+        PA_CollectionRef emptyImages = PA_CreateCollection();
+        PA_CollectionRef emptyTags = PA_CreateCollection();
+        ob_set_c(o, L"images", emptyImages);
+        ob_set_c(o, L"tags", emptyTags);
+        PA_ReturnObject( params, o );
+    }
+}
+
+static void Imebra_Apply_filters_impl(PA_PluginParameters params){
+    
+    CommandGuard guard;
     
     PA_ObjectRef returnValue = PA_CreateObject();
+    guard.ret = returnValue;
     
     PA_Handle h = PA_GetBlobHandleParameter( params, 1 );
+    guard.h = h;
     PA_ObjectRef options = PA_GetObjectParameter( params, 2 );
 
     PA_CollectionRef colImages = PA_CreateCollection();
+    guard.colImages = colImages;
     PA_CollectionRef colAppliedFilters = PA_CreateCollection();
+    guard.colAppliedFilters = colAppliedFilters;
     
     image_format_t image_format = get_image_format(options);
 
@@ -641,6 +695,11 @@ void Imebra_Apply_filters(PA_PluginParameters params){
     {
         PA_long32 size = PA_GetHandleSize(h);
         void *p = PA_LockHandle(h);
+        if(p == NULL)
+        {
+            throw std::runtime_error("PA_LockHandle failed");
+        }
+        guard.locked = true;
         
         gdImagePtr gd_in = NULL;
         
@@ -676,6 +735,7 @@ void Imebra_Apply_filters(PA_PluginParameters params){
         if(gd_in)
         {
             PA_CollectionRef colFilters = ob_get_c(options, L"filters");
+            guard.colFilters = colFilters;
             
             if(colFilters)
             {
@@ -712,6 +772,7 @@ void Imebra_Apply_filters(PA_PluginParameters params){
                 PA_ClearVariable(&vObj1);
                 
                 PA_DisposeCollection(colFilters);
+                guard.colFilters = NULL;/* the collection reference was consumed */
             }else
             {
                 PA_DisposeObject(objImage0);
@@ -725,12 +786,34 @@ void Imebra_Apply_filters(PA_PluginParameters params){
         }
         
         PA_UnlockHandle(h);
+        guard.locked = false;
     }
 
     ob_set_c(returnValue, L"images", colImages);
+    guard.colImages = NULL;/* the collection reference was consumed */
     ob_set_c(returnValue, L"filters", colAppliedFilters);
+    guard.colAppliedFilters = NULL;/* the collection reference was consumed */
     
+    guard.ret = NULL;/* PA_ReturnObject takes over the object */
     PA_ReturnObject( params, returnValue );
+}
+
+void Imebra_Apply_filters(PA_PluginParameters params){
+    
+    /* an exception must never escape without a return value: 4D would hang */
+    try
+    {
+        Imebra_Apply_filters_impl(params);
+    }
+    catch(...)
+    {
+        PA_ObjectRef o = PA_CreateObject();
+        PA_CollectionRef emptyImages = PA_CreateCollection();
+        PA_CollectionRef emptyFilters = PA_CreateCollection();
+        ob_set_c(o, L"images", emptyImages);
+        ob_set_c(o, L"filters", emptyFilters);
+        PA_ReturnObject( params, o );
+    }
 }
 
 #pragma mark -
@@ -1018,7 +1101,7 @@ void apply_filter(gdImagePtr *gd, PA_CollectionRef colFilters, PA_long32 i, PA_C
                     PA_DisposeCollection(_colors);
                 }
 
-                if(gdImageScatterColor(*gd, sub, plus, &colors[0], colors.size()))
+                if(!colors.empty() && gdImageScatterColor(*gd, sub, plus, &colors[0], colors.size()))
                 {
                     PA_Variable vObj = PA_CreateVariable(eVK_Object);
                     PA_SetObjectVariable(&vObj, PA_DuplicateObject(objFilter));

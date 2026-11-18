@@ -809,8 +809,12 @@ void registerDispatcher() {
     add("dispatch-get-images-wrong-format", [] {
         auto o = options(u".bmp", nullptr);
         auto result = run(1, "XXXX", o);
-        check(result == nullptr, "dispatch-get-images-wrong-format no result (preserved)");
-        if (result) release(result);
+        check(result != nullptr, "dispatch-get-images-wrong-format returns object");
+        if (result) {
+            check(count(result, u"images") == 0 && count(result, u"tags") == 0,
+                  "dispatch-get-images-wrong-format empty result");
+            release(result);
+        }
         release(o); balance("dispatch-get-images-wrong-format");
     });
     add("dispatch-apply-filters-null-decode", [] {

@@ -105,14 +105,14 @@ jobs:
           Clone turbo https://github.com/libjpeg-turbo/libjpeg-turbo 2.0.6
           CMake-Configure turbo turbo @('-DENABLE_SHARED=0', '-DENABLE_STATIC=1', '-DWITH_JAVA=0')
           CMake-BuildInstall turbo
-          Alias-Lib 'jpeg.lib' @('libjpeg')
+          Alias-Lib 'jpeg*.lib' @('jpeg', 'libjpeg')
 
           # ---- libpng 1.6.37 static only (needs zlib from deps/) ----
           Clone png https://github.com/pnggroup/libpng v1.6.37
           CMake-Configure png png @('-DPNG_SHARED=OFF', '-DPNG_STATIC=ON', '-DPNG_TESTS=OFF',
                                     "-DCMAKE_PREFIX_PATH=$prefix")
           CMake-BuildInstall png
-          Alias-Lib 'png*static*.lib' @('libpng16', 'libpng', 'png16')
+          Alias-Lib '*png*.lib' @('libpng16', 'libpng', 'png16')
 
           # ---- libwebp 1.2.4 ----
           Clone webp https://github.com/webmproject/libwebp v1.2.4
@@ -123,7 +123,7 @@ jobs:
                                          '-DWEBP_BUILD_VWEBP=OFF', '-DWEBP_BUILD_WEBPINFO=OFF',
                                          '-DWEBP_BUILD_WEBPMUX=OFF', '-DWEBP_BUILD_EXTRAS=OFF')
           CMake-BuildInstall webp
-          Alias-Lib 'webp.lib' @('libwebp')
+          Alias-Lib '*webp.lib' @('libwebp')
 
           # ---- libtiff 4.1.0 (zlib + jpeg + lzma, matching the macOS archive) ----
           Clone tiff https://github.com/libsdl-org/libtiff v4.1.0
@@ -180,7 +180,7 @@ jobs:
           Copy-Lib 'zlib.lib'        'zlib.lib'
           Copy-Lib 'jpeg.lib'        'jpeg.lib'
           First-Glob 'libpng*.lib'   'libpng16.lib'
-          Copy-Lib 'tiff.lib'        'tiff.lib'
+          First-Glob '*tiff*.lib'    'tiff.lib'
           Copy-Lib 'webp.lib'        'webp.lib'
           First-Glob '*lzma*.lib'    'lzma.lib'
           First-Glob '*gd*.lib'      'libgd_static.lib'

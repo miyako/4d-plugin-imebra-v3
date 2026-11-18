@@ -1,0 +1,225 @@
+# Builds the vendored static libraries that Imebra.vcxproj links against
+# (Release|x64 -> lib/windows64/*.lib) from pinned upstream sources.
+#
+# The .lib files were never committed, so they are built here once and the
+# resulting `windows-libs` artifact is committed into lib/windows64/.
+# Re-run this workflow only when a dependency version changes.
+#
+# Versions match the macOS static archives in a/ wherever identifiable:
+#   libpng 1.6.37, libtiff 4.1.0, zlib 1.2.11, libjpeg-turbo 2.0.x,
+#   libgd 2.2.3 (matches include/windows/gd.h), imebra 4.0.0.
+# libwebp and xz/liblzma versions are not identifiable from the archives;
+# any ABI-compatible release works because only libgd/libtiff consume them.
+#
+# Every library is built with the static MSVC runtime (/MT) to match the
+# plugin's RuntimeLibrary=MultiThreaded.
+
+name: Build Windows libraries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # several pinned sources declare cmake_minimum_required < 3.5, which
+  # CMake 4.x refuses outright; this env var relaxes the floor to 3.5
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+  GENERATOR: 'Visual Studio 17 2022'
+  ARCH: x64
+
+jobs:
+  libs:
+    name: Build static libs (x64)
+    runs-on: windows-latest
+    steps:
+      - name: build dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $PWD.Path
+          $prefix = "$root/deps"
+          New-Item -ItemType Directory -Force src, build, "$prefix/lib", "$prefix/include", out | Out-Null
+
+          function Clone([string]$name, [string]$url, [string]$ref) {
+            Write-Host "=== clone $name ($ref)"
+            git clone --depth 1 --branch $ref $url "src/$name"
+            if ($LASTEXITCODE -ne 0) { throw "git clone failed: $name" }
+          }
+
+          function CMake-Configure([string]$name, [string]$srcDir, [string[]]$cmakeArgs) {
+            Write-Host "=== configure $name"
+            $a = @('-S', "src/$srcDir", '-B', "build/$name", '-G', $env:GENERATOR, '-A', $env:ARCH,
+                   '-DCMAKE_BUILD_TYPE=Release', "-DCMAKE_INSTALL_PREFIX=$prefix",
+                   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded') + $cmakeArgs
+            cmake @a
+            if ($LASTEXITCODE -ne 0) { throw "cmake configure failed: $name" }
+          }
+
+          function CMake-BuildInstall([string]$name) {
+            Write-Host "=== build+install $name"
+            cmake --build "build/$name" --config Release
+            if ($LASTEXITCODE -ne 0) { throw "cmake build failed: $name" }
+            cmake --install "build/$name"
+            if ($LASTEXITCODE -ne 0) { throw "cmake install failed: $name" }
+          }
+
+          # create alias copies of a just-installed static lib under the names the
+          # upstream Find*.cmake modules (used by libgd and libtiff) look for
+          function Alias-Lib([string]$pattern, [string[]]$names) {
+            $src = Get-ChildItem "$prefix/lib" -Filter $pattern | Select-Object -First 1
+            if (-not $src) { throw "Alias-Lib: no match for $pattern in $prefix/lib" }
+            foreach ($n in $names) {
+              if ($src.Name -ne "$n.lib") { Copy-Item $src.FullName "$prefix/lib/$n.lib" -Force }
+            }
+          }
+
+          # ---- zlib 1.2.11 (build only the static target; its cmake also makes a DLL) ----
+          Clone zlib https://github.com/madler/zlib v1.2.11
+          cmake -S src/zlib -B build/zlib -G $env:GENERATOR -A $env:ARCH `
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed: zlib' }
+          cmake --build build/zlib --config Release --target zlibstatic
+          if ($LASTEXITCODE -ne 0) { throw 'cmake build failed: zlib' }
+          $zlibLib = Get-ChildItem build/zlib -Recurse -Filter 'zlibstatic.lib' | Select-Object -First 1
+          if (-not $zlibLib) { throw 'zlibstatic.lib not found' }
+          Copy-Item $zlibLib.FullName "$prefix/lib/zlib.lib"
+          Copy-Item $zlibLib.FullName "$prefix/lib/z.lib"
+          Copy-Item src/zlib/zlib.h "$prefix/include/"
+          # zconf.h ships in the source tree; fall back to the cmake-generated copy
+          if (Test-Path src/zlib/zconf.h) {
+            Copy-Item src/zlib/zconf.h "$prefix/include/"
+          } else {
+            $zconf = Get-ChildItem build/zlib -Recurse -Filter 'zconf.h' | Select-Object -First 1
+            if ($zconf) { Copy-Item $zconf.FullName "$prefix/include/" }
+          }
+
+          # ---- xz / liblzma 5.2.5 (needed by libtiff lzma support; before tiff!) ----
+          Clone xz https://github.com/tukaani-project/xz v5.2.5
+          CMake-Configure xz xz @('-DBUILD_SHARED_LIBS=OFF', '-DBUILD_TESTING=OFF')
+          CMake-BuildInstall xz
+          Alias-Lib '*lzma*.lib' @('lzma', 'liblzma')
+
+          # ---- libjpeg-turbo 2.0.6 ----
+          Clone turbo https://github.com/libjpeg-turbo/libjpeg-turbo 2.0.6
+          CMake-Configure turbo turbo @('-DENABLE_SHARED=0', '-DENABLE_STATIC=1', '-DWITH_JAVA=0')
+          CMake-BuildInstall turbo
+          Alias-Lib 'jpeg.lib' @('libjpeg')
+
+          # ---- libpng 1.6.37 static only (needs zlib from deps/) ----
+          Clone png https://github.com/pnggroup/libpng v1.6.37
+          CMake-Configure png png @('-DPNG_SHARED=OFF', '-DPNG_STATIC=ON', '-DPNG_TESTS=OFF',
+                                    "-DCMAKE_PREFIX_PATH=$prefix")
+          CMake-BuildInstall png
+          Alias-Lib 'png*static*.lib' @('libpng16', 'libpng', 'png16')
+
+          # ---- libwebp 1.2.4 ----
+          Clone webp https://github.com/webmproject/libwebp v1.2.4
+          CMake-Configure webp libwebp @('-DBUILD_SHARED_LIBS=OFF',
+                                         '-DWEBP_BUILD_ANIM_UTILS=OFF',
+                                         '-DWEBP_BUILD_CWEBP=OFF', '-DWEBP_BUILD_DWEBP=OFF',
+                                         '-DWEBP_BUILD_GIF2WEBP=OFF', '-DWEBP_BUILD_IMG2WEBP=OFF',
+                                         '-DWEBP_BUILD_VWEBP=OFF', '-DWEBP_BUILD_WEBPINFO=OFF',
+                                         '-DWEBP_BUILD_WEBPMUX=OFF', '-DWEBP_BUILD_EXTRAS=OFF')
+          CMake-BuildInstall webp
+          Alias-Lib 'webp.lib' @('libwebp')
+
+          # ---- libtiff 4.1.0 (zlib + jpeg + lzma, matching the macOS archive) ----
+          Clone tiff https://github.com/libsdl-org/libtiff v4.1.0
+          CMake-Configure tiff libtiff @('-DBUILD_SHARED_LIBS=OFF', '-Dcxx=OFF',
+                                         '-Dzlib=ON', '-Djpeg=ON', '-Dlzma=ON', '-Dzstd=OFF',
+                                         '-Dwebp=OFF', '-Djbig=OFF', '-Dpixarlog=ON',
+                                         "-DCMAKE_PREFIX_PATH=$prefix")
+          CMake-BuildInstall tiff
+
+          # ---- libgd 2.2.3 (must match include/windows/gd.h) ----
+          Clone gd https://github.com/libgd/libgd gd-2.2.3
+          CMake-Configure gd libgd @('-DBUILD_SHARED_LIBS=OFF',
+                                     '-DENABLE_PNG=ON', '-DENABLE_JPEG=ON', '-DENABLE_TIFF=ON',
+                                     '-DENABLE_WEBP=ON', '-DENABLE_ICONV=OFF', '-DENABLE_XPM=OFF',
+                                     "-DCMAKE_PREFIX_PATH=$prefix")
+          CMake-BuildInstall gd
+
+          # ---- imebra 4.0.0 (GitHub mirror of the Bitbucket repo; SHARED -> STATIC) ----
+          Clone imebra https://github.com/knopkem/imebra_mirror 4.0.0
+          (Get-Content src/imebra/library/CMakeLists.txt -Raw) `
+            -replace 'add_library\(imebra SHARED', 'add_library(imebra STATIC' |
+            Set-Content src/imebra/library/CMakeLists.txt -NoNewline
+          cmake -S src/imebra/library -B build/imebra -G $env:GENERATOR -A $env:ARCH `
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed: imebra' }
+          cmake --build build/imebra --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'cmake build failed: imebra' }
+
+          Write-Host '=== deps/lib contents:'
+          Get-ChildItem "$prefix/lib" -Filter '*.lib' | ForEach-Object { Write-Host $_.Name }
+
+      - name: collect plugin libraries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $lib = "$PWD/deps/lib"
+          $out = "$PWD/out"
+
+          function Copy-Lib([string]$srcName, [string]$destName) {
+            $src = "$lib/$srcName"
+            if (-not (Test-Path $src)) { throw "missing $srcName in deps/lib" }
+            Copy-Item $src "$out/$destName"
+            Write-Host "$srcName -> $destName"
+          }
+          function First-Glob([string]$pattern, [string]$destName) {
+            $c = Get-ChildItem $lib -Filter $pattern | Sort-Object Name
+            if (-not $c) { throw "no library matching $pattern in deps/lib" }
+            Copy-Item $c[0].FullName "$out/$destName"
+            Write-Host "$($c[0].Name) -> $destName"
+          }
+
+          # deps/lib also contains Find-module alias copies; every candidate is the
+          # same static archive, so any match is fine
+          Copy-Lib 'zlib.lib'        'zlib.lib'
+          Copy-Lib 'jpeg.lib'        'jpeg.lib'
+          First-Glob 'libpng*.lib'   'libpng16.lib'
+          Copy-Lib 'tiff.lib'        'tiff.lib'
+          Copy-Lib 'webp.lib'        'webp.lib'
+          First-Glob '*lzma*.lib'    'lzma.lib'
+          First-Glob '*gd*.lib'      'libgd_static.lib'
+
+          # imebra has no install rules; grab the static lib from the build tree
+          $imebra = Get-ChildItem build/imebra -Recurse -Filter 'imebra.lib' |
+                    Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $imebra) { $imebra = Get-ChildItem build/imebra -Recurse -Filter 'imebra.lib' | Select-Object -First 1 }
+          if (-not $imebra) { throw 'imebra.lib not found' }
+          Copy-Item $imebra.FullName "$out/imebra.lib"
+          Write-Host "$($imebra.Name) -> imebra.lib"
+
+          Get-ChildItem $out -Filter '*.lib' | ForEach-Object { Write-Host "$($_.Name) $($_.Length) bytes" }
+
+      - name: upload windows-libs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-libs
+          path: out/*.lib
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: sanity check archives
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem out/*.lib | ForEach-Object {
+            $sig = [System.Text.Encoding]::ASCII.GetString(
+              [System.IO.File]::ReadAllBytes($_.FullName)[0..6])
+            Write-Host "$($_.Name): $sig"
+            if ($sig -ne '!<arch>') { throw "$($_.Name) is not a COFF archive" }
+          }
+          # spot-check that imebra.lib carries the SDK symbols the plugin uses
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vs = & $vswhere -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs/VC/Tools/MSVC" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue |
+                     Where-Object { $_.FullName -match 'Hostx64.x64' } | Select-Object -First 1
+          if ($dumpbin) {
+            & $dumpbin.FullName /SYMBOLS out\imebra.lib |
+              Select-String 'CodecFactory' | Select-Object -First 3
+          }
+          Write-Host 'sanity check done'

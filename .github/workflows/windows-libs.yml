@@ -26,7 +26,7 @@ env:
   # several pinned sources declare cmake_minimum_required < 3.5, which
   # CMake 4.x refuses outright; this env var relaxes the floor to 3.5
   CMAKE_POLICY_VERSION_MINIMUM: '3.5'
-  GENERATOR: 'Visual Studio 17 2022'
+  GENERATOR: 'Visual Studio 18 2026'
   ARCH: x64
 
 jobs:

@@ -78,6 +78,21 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "cmake install failed: $name" }
           }
 
+          # install just the tiff library + headers without the tools/contrib
+          # executables: those install rules expect binaries that were not
+          # built (and contrib/iptcutil never links on MSVC anyway)
+          function Tiff-InstallOnlyLibrary() {
+            $tiffLib = Get-ChildItem 'build/tiff/libtiff' -Recurse -Filter 'tiff.lib' |
+                       Select-Object -First 1
+            if (-not $tiffLib) { throw 'tiff.lib not found' }
+            Copy-Item $tiffLib.FullName "$prefix/lib/tiff.lib"
+            Write-Host "$($tiffLib.FullName) -> deps/lib/tiff.lib"
+            foreach ($h in @('tiff.h', 'tiffio.h', 'tiffvers.h')) {
+              Copy-Item "src/tiff/libtiff/$h" "$prefix/include/$h"
+            }
+            Copy-Item 'build/tiff/libtiff/tiffconf.h' "$prefix/include/tiffconf.h"
+          }
+
           # create alias copies of a just-installed static lib under the names the
           # upstream Find*.cmake modules (used by libgd and libtiff) look for
           function Alias-Lib([string]$pattern, [string[]]$names) {
@@ -152,7 +167,9 @@ jobs:
           # build only the tiff library target: the plugin links tiff.lib only,
           # and the tools/tests/contrib tree fails to link regardless (e.g.
           # contrib/iptcutil uses strncasecmp, which does not exist on MSVC)
-          CMake-BuildTargetInstall tiff tiff
+          cmake --build build/tiff --config Release --target tiff
+          if ($LASTEXITCODE -ne 0) { throw 'cmake build failed: tiff' }
+          Tiff-InstallOnlyLibrary
 
           # ---- libgd 2.2.3 (must match include/windows/gd.h) ----
           Clone gd https://github.com/libgd/libgd gd-2.2.3

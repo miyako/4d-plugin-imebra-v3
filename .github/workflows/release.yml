@@ -1,0 +1,451 @@
+# Builds the plugin for Windows (x64) first, then macOS as a universal
+# (arm64 + x86_64) binary, merges both into the single cross-platform
+# .bundle, codesigns + notarizes the mac binary, and publishes a GitHub
+# Release with the zip and dmg attached.
+#
+# Trigger: push a tag matching v*.*.* by hand. A tag pushed by
+# bump-version.yml with GITHUB_TOKEN does NOT start this workflow: after a
+# bump, run `gh workflow run release.yml -f tag=vX.Y.Z`.
+# You can also run it manually against an existing tag with workflow_dispatch.
+#
+# PORTABILITY: edit only the env block below. Everything else is derived.
+# MACOS_DEPLOYMENT_TARGET must equal MACOSX_DEPLOYMENT_TARGET in the pbxproj.
+# Canonical layout enforced:
+#   <Product>.4dbase/Plugins/<Product>.bundle/Contents/MacOS/<Product>
+#   <Product>.4dbase/Plugins/<Product>.bundle/Contents/Windows64/<Product>.4DX
+#   <Product>.4dbase/Plugins/<Product>.bundle/Contents/Resources/manifest.json
+#
+# The macOS job never deletes the bundle: only the plugin binary and the
+# signature are rebuilt. Anything else committed in the bundle (Windows64/,
+# runtime dylibs in MacOS/, QuickLook/, ...) ships as committed. The runner's
+# file system is case-insensitive, so never `rm -rf .../plugins` (lower case):
+# that deletes .../Plugins too.
+
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build (e.g. v2.3.0)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  # ---- only this needs editing per-project ----
+  PRODUCT_NAME: Imebra
+  MACOS_DEPLOYMENT_TARGET: '11.5'
+  # ---------------------------------------------
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set.outputs.tag }}
+      version: ${{ steps.set.outputs.version }}
+    steps:
+      - id: set
+        env:
+          RAW_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # trim whitespace from a hand-typed workflow_dispatch input (" v1.0.1")
+          TAG="$(echo "$RAW_TAG" | xargs)"
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '${RAW_TAG}' is not of the form vX.Y.Z"
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  build-windows:
+    name: Build Windows (x64)
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: clean stale outputs
+        shell: pwsh
+        run: |
+          $product = "${{ env.PRODUCT_NAME }}"
+          $base = "${{ env.PRODUCT_NAME }}.4dbase"
+          Remove-Item -Force -ErrorAction SilentlyContinue "$base/Plugins/$product.bundle/Contents/Windows64/$product.4DX"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$base/Plugins/Default"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "Objs"
+
+      # windows-latest (Visual Studio 18) has the v145 (MSVC 14.5x, default) and
+      # v143 (14.44) toolsets but neither has ATL/MFC. Plugins that use MFC
+      # (UseOfMfc, uafxcw*.lib or an #include <afx...>) get the ATLMFC
+      # component, which installs into the default MSVC only, so they build with
+      # the toolset whose MSVC folder actually has afxwin.h. Everything else
+      # builds with v143. (office-automation, 2026-11-08)
+      - name: select toolset (install ATL/MFC if the plugin uses it)
+        shell: pwsh
+        run: |
+          $usesMfc = [bool](Get-ChildItem -Path . -Filter *.vcxproj | Select-String -Pattern '<UseOfMfc>(Static|Dynamic)|[un]afxcw' -List)
+          if (-not $usesMfc) {
+            $usesMfc = [bool](Get-ChildItem -Path . -Recurse -Include *.h,*.hpp,*.c,*.cpp |
+              Select-String -Pattern '#include[ ]*[<"]afx' -List)
+          }
+          $toolset = 'v143'
+          if ($usesMfc) {
+            $installerDir = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer"
+            $vsPath = & "$installerDir/vswhere.exe" -latest -products * -property installationPath
+            if (-not $vsPath) { throw "Visual Studio not found" }
+            $p = Start-Process -FilePath "$installerDir/vs_installer.exe" -Wait -PassThru -NoNewWindow -ArgumentList @(
+              'modify', '--installPath', "`"$vsPath`"",
+              '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',
+              '--quiet', '--norestart', '--nocache')
+            if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "vs_installer exited $($p.ExitCode)" }
+            $afx = Get-ChildItem -Path "$vsPath/VC/Tools/MSVC" -Recurse -Filter afxwin.h -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $afx) { throw "afxwin.h still missing after installing ATL/MFC" }
+            # <MSVC version>/atlmfc/include/afxwin.h
+            $msvc = [version]$afx.Directory.Parent.Parent.Name
+            $toolset = if ($msvc.Minor -ge 50) { 'v145' } else { 'v143' }
+            Write-Host "MFC headers: $($afx.FullName) (MSVC $msvc)"
+          }
+          Write-Host "PlatformToolset: $toolset"
+          "PLATFORM_TOOLSET=$toolset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # The vcxproj may pin a legacy toolset (v100/v140) and SDK 8.1 that the
+      # runner lacks, so both are overridden on the command line.
+      - name: build x64
+        shell: cmd
+        run: |
+          msbuild "%PRODUCT_NAME%.sln" /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=%PLATFORM_TOOLSET% /p:WindowsTargetPlatformVersion=10.0 /m
+
+      - name: normalize windows output to canonical case
+        shell: pwsh
+        run: |
+          $product = "${{ env.PRODUCT_NAME }}"
+          $base = "${{ env.PRODUCT_NAME }}.4dbase"
+          $canonicalDir = "$base/Plugins/$product.bundle/Contents/Windows64"
+          New-Item -ItemType Directory -Force -Path $canonicalDir | Out-Null
+
+          # msbuild may write to plugins\...\contents\windows64 (lower case, per the vcxproj)
+          $found = Get-ChildItem -Recurse -Filter "$product.4DX" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*Plugins*" } | Select-Object -First 1
+          if (-not $found) {
+            Get-ChildItem -Recurse -Filter "*.4DX" | ForEach-Object { Write-Host $_.FullName }
+            Write-Error "Windows binary $product.4DX not found after build"
+            exit 1
+          }
+          Write-Host "Found at: $($found.FullName)"
+
+          $destination = Join-Path $canonicalDir "$product.4DX"
+          $sourceResolved = (Resolve-Path $found.FullName).Path
+          $destResolved = (Resolve-Path $destination -ErrorAction SilentlyContinue).Path
+
+          if ($destResolved -and ($sourceResolved -ieq $destResolved)) {
+            # Windows is case-insensitive: MSBuild's OutDir (lowercase, per
+            # the .vcxproj) and this step's canonical path already point at
+            # the identical physical file. Copy-Item correctly refuses to
+            # "overwrite" a file with itself - there's nothing left to do.
+            Write-Host "Already at canonical location (case-insensitive match) - skipping copy."
+          } else {
+            Copy-Item $found.FullName $destination -Force
+          }
+          Get-ChildItem $canonicalDir
+
+      - name: upload windows binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: ${{ env.PRODUCT_NAME }}.4dbase/Plugins/${{ env.PRODUCT_NAME }}.bundle/Contents/Windows64/${{ env.PRODUCT_NAME }}.4DX
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS, package, sign, notarize & release
+    needs: [version, build-windows]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      # Every library the Xcode project references must be present, and every
+      # static or dynamic library the target links must carry arm64 + x86_64.
+      # Paths are resolved through the project's group hierarchy, so a
+      # `path = libfoo.a` inside an "a" group counts as a/libfoo.a. Files under
+      # a/ or lib/ must exist (a gitignored a/* makes the link fail); a linked
+      # archive without an arm64 or x86_64 slice is only a linker warning
+      # ("ignoring file"), so it is caught here instead.
+      - name: check prebuilt libraries
+        run: |
+          python3 -I - "${{ env.PRODUCT_NAME }}.xcodeproj/project.pbxproj" <<'PY'
+          import json, os, subprocess, sys
+          pbx = os.path.abspath(sys.argv[1])
+          os.chdir(os.path.dirname(os.path.dirname(pbx)))
+          data = json.loads(subprocess.run(['plutil', '-convert', 'json', '-o', '-', pbx],
+                                           capture_output=True, check=True).stdout)
+          objs = data['objects']
+          parent = {c: k for k, o in objs.items() for c in o.get('children', [])}
+
+          def resolve(key):
+              o = objs[key]
+              tree, path = o.get('sourceTree'), o.get('path', '')
+              if tree == 'SOURCE_ROOT':
+                  return os.path.normpath(path) if path else ''
+              if tree != '<group>':
+                  return None
+              if key not in parent:
+                  return os.path.normpath(path) if path else ''
+              base = resolve(parent[key])
+              if base is None:
+                  return None
+              return os.path.normpath(os.path.join(base, path)) if (base or path) else ''
+
+          linked = set()
+          for o in objs.values():
+              if o.get('isa') == 'PBXFrameworksBuildPhase':
+                  for bf in o.get('files', []):
+                      ref = objs.get(bf, {}).get('fileRef')
+                      if ref in objs:
+                          p = resolve(ref)
+                          if p and p.endswith(('.a', '.dylib')) and not p.startswith('..'):
+                              linked.add(p)
+
+          vendored = set()
+          for k, o in objs.items():
+              if o.get('isa') == 'PBXFileReference':
+                  p = resolve(k)
+                  if p and p.split(os.sep)[0] in ('a', 'lib'):
+                      vendored.add(p)
+
+          bad = 0
+          for p in sorted(vendored | linked):
+              if not os.path.exists(p):
+                  print(f'::error::Missing prebuilt library {p}')
+                  bad = 1
+                  continue
+              if p not in linked:
+                  print(f'{p}: present')
+                  continue
+              r = subprocess.run(['lipo', '-archs', p], capture_output=True, text=True)
+              archs = r.stdout.split() if r.returncode == 0 else []
+              print(f'{p}: {" ".join(archs) or "?"}')
+              for a in ('arm64', 'x86_64'):
+                  if a not in archs:
+                      print(f'::error::{p} has no {a} slice (rebuild it as a universal library)')
+                      bad = 1
+          sys.exit(bad)
+          PY
+
+      - name: download windows binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-binaries
+          path: winbuild
+
+      - name: import Developer ID certificate
+        env:
+          CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+
+          echo -n "$CERT_BASE64" | base64 --decode -o "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: store notarytool credentials
+        env:
+          APPLE_ID: ${{ secrets.NOTARYTOOL_APPLE_ID }}
+          TEAM_ID: ${{ secrets.NOTARYTOOL_TEAM_ID }}
+          APP_PASSWORD: ${{ secrets.NOTARYTOOL_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "notarytool-profile" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$TEAM_ID" \
+            --password "$APP_PASSWORD" \
+            --keychain "$KEYCHAIN_PATH"
+
+      - name: build macOS plugin (universal)
+        run: |
+          set -euo pipefail
+          PRODUCT="${{ env.PRODUCT_NAME }}"
+          BASE="${{ env.PRODUCT_NAME }}.4dbase"
+          XCODE_PROJECT="${PRODUCT}.xcodeproj"
+          XCODE_TARGET="${PRODUCT}"
+          PLUGINS_DIR="${BASE}/Plugins"
+          BUNDLE="${PLUGINS_DIR}/${PRODUCT}.bundle"
+
+          # remove only what the build produces, so a misdirected build fails
+          # at verify instead of shipping a stale committed binary
+          echo "Cleaning stale outputs to avoid /Default/ vs / bug"
+          rm -f "${BUNDLE:?}/Contents/MacOS/${PRODUCT:?}"
+          rm -rf "${BUNDLE:?}/Contents/_CodeSignature"
+          rm -rf "${PLUGINS_DIR:?}/Default"
+          rm -rf "${PLUGINS_DIR:?}/${PRODUCT:?}.build"
+
+          echo "Building $XCODE_PROJECT target $XCODE_TARGET"
+          xcodebuild -project "$XCODE_PROJECT" \
+            -target "$XCODE_TARGET" \
+            -configuration Default \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            MACOSX_DEPLOYMENT_TARGET="${{ env.MACOS_DEPLOYMENT_TARGET }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CONFIGURATION_BUILD_DIR="$PWD/$PLUGINS_DIR" \
+            build
+
+          echo "Built:"
+          ls -R "$PLUGINS_DIR"
+
+      - name: verify universal binary
+        run: |
+          set -euo pipefail
+          PRODUCT="${{ env.PRODUCT_NAME }}"
+          BASE="${{ env.PRODUCT_NAME }}.4dbase"
+          CONTENTS="${BASE}/Plugins/${PRODUCT}.bundle/Contents"
+          BIN="${CONTENTS}/MacOS/${PRODUCT}"
+
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Expected binary not found at $BIN - CONFIGURATION_BUILD_DIR mismatch?"
+            ls -R "$BASE"
+            exit 1
+          fi
+
+          echo "Timestamp check (must be recent):"
+          ls -lT "$BIN" || ls -l --time-style=full "$BIN"
+
+          # separate lines: under set -e a failure left of && is ignored
+          lipo -info "$BIN"
+          lipo -info "$BIN" | grep -q "arm64"
+          lipo -info "$BIN" | grep -q "x86_64"
+          if lipo -info "$BIN" | grep -q "i386"; then
+            echo "::error::i386 slice found - this is a stale binary, not the fresh build"
+            exit 1
+          fi
+
+          # runtime dylibs committed next to the binary must be universal too
+          for lib in "${CONTENTS}"/MacOS/*.dylib; do
+            [ -e "$lib" ] || continue
+            lipo -info "$lib"
+            lipo -info "$lib" | grep -q "arm64"
+            lipo -info "$lib" | grep -q "x86_64"
+          done
+
+          if [ ! -f "${CONTENTS}/Resources/manifest.json" ]; then
+            echo "::error::Missing ${CONTENTS}/Resources/manifest.json"
+            exit 1
+          fi
+          if [ -f constants.xlf ] && [ ! -f "${CONTENTS}/Resources/constants.xlf" ]; then
+            echo "::error::constants.xlf is not copied to ${CONTENTS}/Resources"
+            exit 1
+          fi
+
+      - name: merge Windows binaries into the bundle
+        run: |
+          set -euo pipefail
+          PRODUCT="${{ env.PRODUCT_NAME }}"
+          BASE="${{ env.PRODUCT_NAME }}.4dbase"
+          BUNDLE="${BASE}/Plugins/${PRODUCT}.bundle"
+
+          mkdir -p "$BUNDLE/Contents/Windows64"
+
+          echo "winbuild contents:"
+          ls -R winbuild || true
+
+          SRC=$(find winbuild -name "${PRODUCT}.4DX" -type f | head -1)
+          if [ -z "$SRC" ]; then
+            echo "::error::Windows binary ${PRODUCT}.4DX not found in winbuild/"
+            exit 1
+          fi
+
+          echo "Copying $SRC -> $BUNDLE/Contents/Windows64/${PRODUCT}.4DX"
+          cp "$SRC" "$BUNDLE/Contents/Windows64/${PRODUCT}.4DX"
+
+          echo "BUNDLE_PATH=$BUNDLE" >> "$GITHUB_ENV"
+          ls -R "$BUNDLE/Contents"
+
+      - name: codesign
+        run: |
+          set -euo pipefail
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No Developer ID Application identity found"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+          echo "Signing with: $IDENTITY"
+          codesign --verbose --deep --timestamp --force --options=runtime \
+            --sign "$IDENTITY" "$BUNDLE_PATH"
+          codesign --verify --deep --strict --verbose=2 "$BUNDLE_PATH"
+
+      - name: package, notarize & staple
+        run: |
+          set -euo pipefail
+          PRODUCT="${{ env.PRODUCT_NAME }}"
+          VERSION="${{ needs.version.outputs.version }}"
+          ZIP_PATH="${PRODUCT}-${VERSION}.zip"
+          DMG_PATH="${PRODUCT}-${VERSION}.dmg"
+
+          # zip: cross-platform bundle (win + mac binaries together), what most users grab
+          echo "Creating $ZIP_PATH"
+          ditto -c -k --keepParent "$BUNDLE_PATH" "$ZIP_PATH"
+
+          # dmg: mac-friendly, and the only format Apple lets us staple a ticket to
+          echo "Creating $DMG_PATH"
+          hdiutil create -format UDBZ -volname "$PRODUCT" -srcfolder "$BUNDLE_PATH" "$DMG_PATH"
+
+          # submit and wait; on anything but Accepted, print Apple's log and fail
+          # (notarytool submit --wait exits 0 even when the status is Invalid)
+          notarize() {
+            local OUT ID STATUS
+            OUT=$(xcrun notarytool submit "$1" --keychain-profile "notarytool-profile" --keychain "$KEYCHAIN_PATH" \
+              --wait --output-format json) || true
+            echo "$OUT"
+            ID=$(plutil -extract id raw -o - - <<< "$OUT" 2>/dev/null || true)
+            STATUS=$(plutil -extract status raw -o - - <<< "$OUT" 2>/dev/null || true)
+            if [ "$STATUS" != "Accepted" ]; then
+              echo "::error::Notarization of $1 returned '${STATUS:-no status}'"
+              if [ -n "$ID" ]; then
+                xcrun notarytool log "$ID" --keychain-profile "notarytool-profile" --keychain "$KEYCHAIN_PATH" || true
+              fi
+              return 1
+            fi
+          }
+
+          notarize "$ZIP_PATH"
+          notarize "$DMG_PATH"
+          xcrun stapler staple "$DMG_PATH"
+
+          echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+          ls -lh "$ZIP_PATH" "$DMG_PATH"
+
+      - name: create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.DMG_PATH }}

@@ -1,4 +1,11 @@
 *.a
 *.lib
 *.DS_Store
-imebra/build/*
+build/
+*.4dbase/Logs/
+*.4dbase/userPreferences.*/
+/Imebra.dmg
+/Imebra.zip
+/Imebra.4dbase/Plugins/Imebra.bundle/Contents/MacOS/Imebra
+/Imebra.4dbase/Plugins/Imebra.bundle/Contents/CodeResources
+/Imebra.4dbase/Plugins/Imebra.bundle/Contents/_CodeSignature/

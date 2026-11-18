@@ -14,11 +14,13 @@ if args[:1] == ["--expect-fail"]:
     args = args[2:]
 root = Path(args[0] if args else ".").resolve()
 here = Path(__file__).resolve().parent
-sdk = root / "imebra/4D Plugin API"
+# Trees before the move-to-root layout keep the plugin under imebra/.
+base = root / "imebra" if (root / "imebra").is_dir() else root
+sdk = base / "4D Plugin API"
 sources = [sdk / "4DPluginAPI.c", *sorted((sdk / "Classes").glob("*.cpp")),
-           root / "imebra/4DPlugin.cpp", here / "main.mm"]
+           base / "4DPlugin.cpp", here / "main.mm"]
 for path in sorted(set(sources + list(sdk.rglob("*.h")) +
-                       [root / "imebra/4DPlugin.h", root / "imebra/manifest.json",
+                       [base / "4DPlugin.h", base / "manifest.json",
                         here / "run.py"] + list((here / "boundaries").rglob("*.h")))):
     print(hashlib.sha256(path.read_bytes()).hexdigest(), path, flush=True)
 

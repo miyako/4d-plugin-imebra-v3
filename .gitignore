@@ -9,3 +9,9 @@ build/
 /Imebra.4dbase/Plugins/Imebra.bundle/Contents/MacOS/Imebra
 /Imebra.4dbase/Plugins/Imebra.bundle/Contents/CodeResources
 /Imebra.4dbase/Plugins/Imebra.bundle/Contents/_CodeSignature/
+
+# vendored Windows static libraries built by the "Build Windows libraries"
+# workflow, committed for the release build (vcxproj: lib\windows64)
+!lib/
+!lib/windows64/
+!lib/windows64/*.lib

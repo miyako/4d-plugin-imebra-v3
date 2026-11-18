@@ -34,6 +34,10 @@ jobs:
     name: Build static libs (x64)
     runs-on: windows-latest
     steps:
+      # the verify step at the end builds the plugin itself, so the checkout
+      # is needed even though the dependency builds all happen from git clones
+      - uses: actions/checkout@v4
+
       - name: build dependencies
         shell: pwsh
         run: |
@@ -126,10 +130,15 @@ jobs:
           Alias-Lib '*webp.lib' @('libwebp')
 
           # ---- libtiff 4.1.0 (zlib + jpeg + lzma, matching the macOS archive) ----
+          # tif_lzma.c includes lzma.h, which on MSVC defaults to using the
+          # (dllimport) __imp_lzma_* symbols unless LZMA_API_STATIC is defined.
+          # Without it, linking the static lzma.lib fails with LNK2019 on every
+          # consumer of tiff.lib (tiff's own tools/tests and the plugin).
           Clone tiff https://github.com/libsdl-org/libtiff v4.1.0
           CMake-Configure tiff tiff @('-DBUILD_SHARED_LIBS=OFF', '-Dcxx=OFF',
                                          '-Dzlib=ON', '-Djpeg=ON', '-Dlzma=ON', '-Dzstd=OFF',
                                          '-Dwebp=OFF', '-Djbig=OFF', '-Dpixarlog=ON',
+                                         '-DCMAKE_C_FLAGS=/DLZMA_API_STATIC',
                                          "-DCMAKE_PREFIX_PATH=$prefix")
           CMake-BuildInstall tiff
 
@@ -223,3 +232,21 @@ jobs:
               Select-String 'CodecFactory' | Select-Object -First 3
           }
           Write-Host 'sanity check done'
+
+      - name: setup MSBuild (verify the plugin links against out/*.lib)
+        uses: microsoft/setup-msbuild@v2
+
+      # Runs exactly the command that release.yml's "build x64" step runs
+      # (Imebra.sln, Release|x64, v143 - the plugin does not use MFC). This is
+      # the definitive proof that the artifact is linkable by the plugin; the
+      # generated libs are placed where Imebra.vcxproj looks for them
+      # (lib/windows64 via AdditionalLibraryDirectories).
+      - name: verify plugin links (mirrors release.yml 'build x64')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force 'lib/windows64' | Out-Null
+          Copy-Item out/*.lib 'lib/windows64/'
+          & msbuild 'Imebra.sln' /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /m
+          if ($LASTEXITCODE -ne 0) { throw 'plugin build failed - see msbuild log above' }
+          Write-Host 'plugin link verification passed'

@@ -69,15 +69,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "cmake install failed: $name" }
           }
 
-          # build a single target, then install only what it produced
-          function CMake-BuildTargetInstall([string]$name, [string]$target) {
-            Write-Host "=== build $name (target: $target)"
-            cmake --build "build/$name" --config Release --target $target
-            if ($LASTEXITCODE -ne 0) { throw "cmake build failed: $name ($target)" }
-            cmake --install "build/$name"
-            if ($LASTEXITCODE -ne 0) { throw "cmake install failed: $name" }
-          }
-
           # install just the tiff library + headers without the tools/contrib
           # executables: those install rules expect binaries that were not
           # built (and contrib/iptcutil never links on MSVC anyway)
@@ -173,11 +164,24 @@ jobs:
 
           # ---- libgd 2.2.3 (must match include/windows/gd.h) ----
           Clone gd https://github.com/libgd/libgd gd-2.2.3
+          # gd hardcodes the 2.8-era policy CMP0017=OLD, which CMake >= 4
+          # refuses (the policy is now NEW-only); drop the line
+          (Get-Content src/gd/CMakeLists.txt -Raw) `
+            -replace 'CMAKE_POLICY\(SET CMP0017 OLD\)', '# CMP0017 OLD removed (unsupported on CMake >= 4)' |
+            Set-Content src/gd/CMakeLists.txt -NoNewline
           CMake-Configure gd gd @('-DBUILD_SHARED_LIBS=OFF',
                                      '-DENABLE_PNG=ON', '-DENABLE_JPEG=ON', '-DENABLE_TIFF=ON',
                                      '-DENABLE_WEBP=ON', '-DENABLE_ICONV=OFF', '-DENABLE_XPM=OFF',
                                      "-DCMAKE_PREFIX_PATH=$prefix")
-          CMake-BuildInstall gd
+          # build only the gd_static library target: the plugin links
+          # libgd_static.lib only, and the tools/examples are not needed
+          cmake --build build/gd --config Release --target gd_static
+          if ($LASTEXITCODE -ne 0) { throw 'cmake build failed: gd' }
+          $gdLib = Get-ChildItem 'build/gd' -Recurse -Filter 'gd_static.lib' |
+                   Select-Object -First 1
+          if (-not $gdLib) { throw 'gd_static.lib not found' }
+          Copy-Item $gdLib.FullName "$prefix/lib/libgd_static.lib"
+          Write-Host "$($gdLib.FullName) -> deps/lib/libgd_static.lib"
 
           # ---- imebra 4.0.0 (GitHub mirror of the Bitbucket repo; SHARED -> STATIC) ----
           Clone imebra https://github.com/knopkem/imebra_mirror 4.0.0

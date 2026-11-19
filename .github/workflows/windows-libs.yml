@@ -188,6 +188,13 @@ jobs:
           (Get-Content src/imebra/library/CMakeLists.txt -Raw) `
             -replace 'add_library\(imebra SHARED', 'add_library(imebra STATIC' |
             Set-Content src/imebra/library/CMakeLists.txt -NoNewline
+          # memoryImpl.h uses std::basic_string but only includes <list>, <map>,
+          # <memory>, <array>, <thread>. That works when <string> arrives
+          # transitively (libc++/libstdc++), but MSVC's STL does not provide
+          # it, so every TU that includes the header first fails to compile.
+          (Get-Content src/imebra/library/implementation/memoryImpl.h -Raw) `
+            -replace '#include <array>', "#include <array>`n#include <string>" |
+            Set-Content src/imebra/library/implementation/memoryImpl.h -NoNewline
           cmake -S src/imebra/library -B build/imebra -G $env:GENERATOR -A $env:ARCH `
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
           if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed: imebra' }

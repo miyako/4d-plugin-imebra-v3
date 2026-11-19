@@ -56,7 +56,12 @@ jobs:
             Write-Host "=== configure $name"
             $a = @('-S', "src/$srcDir", '-B', "build/$name", '-G', $env:GENERATOR, '-A', $env:ARCH,
                    '-DCMAKE_BUILD_TYPE=Release', "-DCMAKE_INSTALL_PREFIX=$prefix",
-                   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded') + $cmakeArgs
+                   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+                   # all these old projects declare cmake_minimum_required < 3.15,
+                   # so policy CMP0091 is OLD and CMAKE_MSVC_RUNTIME_LIBRARY would
+                   # be ignored (defaulting every lib to /MD); force it NEW so the
+                   # plugin's /MT (static CRT) link does not get LNK2038 mismatches
+                   '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW') + $cmakeArgs
             cmake @a
             if ($LASTEXITCODE -ne 0) { throw "cmake configure failed: $name" }
           }
@@ -97,7 +102,8 @@ jobs:
           # ---- zlib 1.2.11 (build only the static target; its cmake also makes a DLL) ----
           Clone zlib https://github.com/madler/zlib v1.2.11
           cmake -S src/zlib -B build/zlib -G $env:GENERATOR -A $env:ARCH `
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
           if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed: zlib' }
           cmake --build build/zlib --config Release --target zlibstatic
           if ($LASTEXITCODE -ne 0) { throw 'cmake build failed: zlib' }
@@ -172,6 +178,12 @@ jobs:
           CMake-Configure gd gd @('-DBUILD_SHARED_LIBS=OFF',
                                      '-DENABLE_PNG=ON', '-DENABLE_JPEG=ON', '-DENABLE_TIFF=ON',
                                      '-DENABLE_WEBP=ON', '-DENABLE_ICONV=OFF', '-DENABLE_XPM=OFF',
+                                     # gd's bundled FindWEBP only hints /usr/*/include/webp,
+                                     # so it cannot locate deps/include/webp/decode.h on its
+                                     # own; without it ENABLE_WEBP silently builds an empty
+                                     # stub and the plugin's gdImage*Webp* calls fail to link
+                                     "-DWEBP_INCLUDE_DIR=$prefix/include",
+                                     "-DWEBP_LIBRARY=$prefix/lib/webp.lib",
                                      "-DCMAKE_PREFIX_PATH=$prefix")
           # build only the libgd_static library target: the plugin links
           # libgd_static.lib only, and the tools/examples are not needed
@@ -196,7 +208,8 @@ jobs:
             -replace '#include <array>', "#include <array>`n#include <string>" |
             Set-Content src/imebra/library/implementation/memoryImpl.h -NoNewline
           cmake -S src/imebra/library -B build/imebra -G $env:GENERATOR -A $env:ARCH `
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
           if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed: imebra' }
           cmake --build build/imebra --config Release
           if ($LASTEXITCODE -ne 0) { throw 'cmake build failed: imebra' }

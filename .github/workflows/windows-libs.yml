@@ -173,13 +173,13 @@ jobs:
                                      '-DENABLE_PNG=ON', '-DENABLE_JPEG=ON', '-DENABLE_TIFF=ON',
                                      '-DENABLE_WEBP=ON', '-DENABLE_ICONV=OFF', '-DENABLE_XPM=OFF',
                                      "-DCMAKE_PREFIX_PATH=$prefix")
-          # build only the gd_static library target: the plugin links
+          # build only the libgd_static library target: the plugin links
           # libgd_static.lib only, and the tools/examples are not needed
-          cmake --build build/gd --config Release --target gd_static
+          cmake --build build/gd --config Release --target libgd_static
           if ($LASTEXITCODE -ne 0) { throw 'cmake build failed: gd' }
-          $gdLib = Get-ChildItem 'build/gd' -Recurse -Filter 'gd_static.lib' |
+          $gdLib = Get-ChildItem 'build/gd' -Recurse -Filter 'libgd_static*.lib' |
                    Select-Object -First 1
-          if (-not $gdLib) { throw 'gd_static.lib not found' }
+          if (-not $gdLib) { throw 'libgd_static.lib not found' }
           Copy-Item $gdLib.FullName "$prefix/lib/libgd_static.lib"
           Write-Host "$($gdLib.FullName) -> deps/lib/libgd_static.lib"
 
